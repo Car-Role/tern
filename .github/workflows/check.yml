@@ -1,0 +1,31 @@
+# Type check and tests on every push and pull request.
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Type check
+        run: npm run check
+      - name: Git identity for the tests (they make commits in temporary repos)
+        run: |
+          git config --global user.name "Tern CI"
+          git config --global user.email "ci@example.com"
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tern",
+  "version": "0.1.0",
+  "identifier": "com.carl.scout",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Tern",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 560,
+        "backgroundColor": "#161a21",
+        "label": "main",
+        "decorations": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mdx"
+        ],
+        "name": "Markdown document",
+        "description": "Markdown document",
+        "role": "Viewer",
+        "mimeType": "text/markdown"
+      }
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "A fast, keyboard-first viewer for reviewing many git projects",
+    "publisher": "Carl Miller",
+    "copyright": "Copyright (c) 2026 Carl Miller. Business Source License 1.1.",
+    "homepage": "https://car-role.github.io/tern/",
+    "longDescription": "Tern is a fast, keyboard-first app for reviewing many git repos at once: diffs, history, pull requests, CI, tasks, and terminals, built for working alongside coding agents."
+  }
+}

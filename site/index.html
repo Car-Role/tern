@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tern — review every repo your agents touch</title>
+  <meta name="description" content="Tern is a fast, keyboard-first app for reviewing many git repos at once: diffs, history, pull requests, CI, tickets, tasks, and terminals. Free for individuals and small teams, on Windows, macOS, and Linux.">
+  <meta property="og:title" content="Tern">
+  <meta property="og:description" content="A fast, keyboard-first app for reviewing many git repos at once. Built for working alongside coding agents.">
+  <meta property="og:image" content="https://car-role.github.io/tern/assets/review.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#161a21">
+  <link rel="icon" href="assets/tern-icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* The same tokens as Tern's default Slate theme. */
+    :root {
+      --bg: #161a21;
+      --panel: #1b2029;
+      --raised: #232a35;
+      --hover: #1f2530;
+      --line: #29303b;
+      --line-strong: #3a4350;
+      --text: #d6dbe3;
+      --muted: #8b94a3;
+      --faint: #5b6473;
+      --amber: #f0b54a;
+      --amber-soft: rgba(240, 181, 74, 0.12);
+      --blue: #86a8f0;
+      --add: #5fbf8b;
+      --del: #e0716f;
+      --on-accent: #1b1406;
+      --ui: "Segoe UI Variable Text", Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: "Cascadia Mono", "JetBrains Mono", Consolas, "SF Mono", monospace;
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --radius: 8px;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.6 var(--ui);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; }
+    img { max-width: 100%; height: auto; display: block; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+    /* The top bar mirrors Tern's own title bar. */
+    .bar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      height: 52px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    .bar .wrap { height: 100%; display: flex; align-items: center; gap: 20px; }
+    .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 15px; text-decoration: none; }
+    .tile {
+      width: 24px; height: 24px; border-radius: 7px; background: var(--text); color: var(--panel);
+      display: grid; place-items: center; flex: none;
+    }
+    .bar nav { display: flex; gap: 4px; margin-left: auto; align-items: center; }
+    .bar nav a {
+      font-size: 13.5px; color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px;
+      transition: color 150ms var(--ease-out), background-color 150ms var(--ease-out);
+    }
+    .bar nav a:hover { color: var(--text); background: var(--hover); }
+    .bar nav a.gh { display: flex; align-items: center; gap: 6px; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px;
+      border-radius: var(--radius); font-weight: 550; font-size: 14.5px; text-decoration: none;
+      border: 1px solid var(--line-strong); color: var(--text);
+      transition: transform 160ms var(--ease-out), background-color 150ms var(--ease-out), border-color 150ms var(--ease-out);
+    }
+    .btn:hover { border-color: var(--muted); background: var(--hover); }
+    .btn:active { transform: scale(0.97); }
+    .btn.primary { background: var(--amber); border-color: var(--amber); color: var(--on-accent); }
+    .btn.primary:hover { background: #f4c167; border-color: #f4c167; }
+    kbd {
+      font: 500 12px/1 var(--mono); color: var(--text); background: var(--raised);
+      border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 3px 6px;
+      white-space: nowrap;
+    }
+    code { font: 13px var(--mono); background: var(--raised); padding: 1px 6px; border-radius: 5px; }
+
+    /* Hero */
+    .hero { padding: 88px 0 40px; text-align: center; }
+    .hero h1 {
+      margin: 0 auto 18px; max-width: 16ch; font-size: clamp(36px, 6vw, 60px); line-height: 1.06;
+      letter-spacing: -0.025em; font-weight: 650; text-wrap: balance;
+    }
+    .hero h1 em { font-style: normal; color: var(--amber); }
+    .lede { margin: 0 auto 30px; max-width: 58ch; color: var(--muted); font-size: 17.5px; text-wrap: pretty; }
+    .ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .fine { margin-top: 16px; color: var(--faint); font-size: 13px; }
+    .fine span + span::before { content: "·"; margin: 0 8px; }
+
+    /* Screenshots sit in a window frame like the app's. */
+    .window {
+      margin-top: 56px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line-strong);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 0.35); background: var(--panel);
+    }
+
+    section { padding: 88px 0; }
+    section + section { border-top: 1px solid var(--line); }
+    h2 {
+      margin: 0 0 14px; font-size: clamp(26px, 3.4vw, 36px); line-height: 1.15; letter-spacing: -0.02em;
+      font-weight: 650; text-wrap: balance;
+    }
+    .sub { margin: 0 0 40px; color: var(--muted); font-size: 16.5px; max-width: 62ch; text-wrap: pretty; }
+
+    /* The review loop: a real sequence, so it is numbered. */
+    .loop { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .loop li { list-style: none; padding: 22px 22px 24px; background: var(--panel); }
+    .loop li + li { border-left: 1px solid var(--line); }
+    .step { font: 500 12px var(--mono); color: var(--amber); }
+    .loop h3 { margin: 8px 0 6px; font-size: 16px; font-weight: 600; }
+    .loop p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+
+    /* Feature rows: screenshot and text side by side, alternating. */
+    .feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; align-items: center; }
+    .feature + .feature { margin-top: 88px; }
+    .feature.flip .copy { order: 2; }
+    .copy h3 { margin: 0 0 10px; font-size: 22px; letter-spacing: -0.01em; font-weight: 650; }
+    .copy p { margin: 0 0 14px; color: var(--muted); }
+    .copy ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+    .copy li { display: flex; gap: 10px; font-size: 14.5px; }
+    .copy li::before { content: ""; flex: none; width: 6px; height: 6px; margin-top: 9px; border-radius: 2px; background: var(--amber); }
+    .shot { border-radius: 10px; overflow: hidden; border: 1px solid var(--line-strong); box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); }
+
+    /* Everything else, as a dense two-column list instead of a grid of cards. */
+    .more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px; }
+    .more div { padding: 18px 0; border-top: 1px solid var(--line); }
+    .more b { display: block; font-weight: 600; margin-bottom: 2px; }
+    .more span { color: var(--muted); font-size: 14.5px; }
+
+    .keys { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+    .keys td { padding: 11px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+    .keys td:first-child { width: 42%; }
+    .keys td:last-child { color: var(--muted); }
+    .keys kbd + kbd { margin-left: 4px; }
+
+    .dl { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+    .dl th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px; padding: 0 0 10px; }
+    .dl td { padding: 13px 0; border-top: 1px solid var(--line); }
+    .dl td:nth-child(2) { font: 13px var(--mono); color: var(--muted); }
+    .dl tr.you td:first-child::after { content: "Your system"; margin-left: 10px; font-size: 11.5px; color: var(--amber); background: var(--amber-soft); padding: 2px 7px; border-radius: 10px; }
+    .notes { margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; font-size: 14px; color: var(--muted); }
+    .notes b { color: var(--text); font-weight: 600; display: block; margin-bottom: 4px; }
+
+    .principles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; }
+    .principles > div { min-width: 0; }
+    .principles ul { margin: 0; padding-left: 18px; color: var(--muted); display: grid; gap: 8px; }
+    pre {
+      margin: 0; padding: 18px 20px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line);
+      font: 13.5px/1.7 var(--mono); overflow-x: auto; color: var(--text);
+    }
+    pre .c { color: var(--faint); }
+
+    footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--faint); font-size: 13.5px; }
+    footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+
+    /* A short entrance for the hero only; content is visible without it. */
+    @media (prefers-reduced-motion: no-preference) {
+      .hero h1, .hero .lede, .hero .ctas { animation: rise 520ms var(--ease-out) both; }
+      .hero .lede { animation-delay: 60ms; }
+      .hero .ctas { animation-delay: 120ms; }
+      .window { animation: rise 700ms var(--ease-out) 160ms both; }
+      @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+    }
+
+    @media (max-width: 900px) {
+      .loop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .loop li:nth-child(3) { border-left: 0; }
+      .loop li:nth-child(n+3) { border-top: 1px solid var(--line); }
+      .feature, .feature.flip { grid-template-columns: 1fr; gap: 24px; }
+      .feature.flip .copy { order: 0; }
+      .notes, .principles { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .wrap { padding: 0 16px; }
+      .bar nav a:not(.gh):not(.dlink) { display: none; }
+      .hero { padding-top: 56px; }
+      section { padding: 64px 0; }
+      .loop, .more { grid-template-columns: 1fr; }
+      .loop li + li { border-left: 0; border-top: 1px solid var(--line); }
+      .keys td:first-child { width: 50%; }
+      .dl th:nth-child(2), .dl td:nth-child(2) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bar">
+    <div class="wrap">
+      <a class="brand" href="#top" aria-label="Tern home">
+        <span class="tile" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15"><path d="M3.5 9.5c3 0 5.5 1.5 8.5 5 3-3.5 5.5-5 8.5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        Tern
+      </a>
+      <nav aria-label="Main">
+        <a href="#features">Features</a>
+        <a href="#keyboard">Keyboard</a>
+        <a href="https://github.com/Car-Role/tern/blob/main/docs/guide.md">Guide</a>
+        <a class="dlink" href="#download">Download</a>
+        <a class="gh" href="https://github.com/Car-Role/tern" aria-label="Tern on GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="wrap hero">
+      <h1>Review every repo your <em>agents</em> touch.</h1>
+      <p class="lede">
+        Tern is a fast, keyboard-first app for watching many git repos at once. Read diffs, check CI, pull and push,
+        and hand exact file paths back to your agents, without opening a single editor window.
+      </p>
+      <div class="ctas">
+        <a class="btn primary" id="dl-main" href="https://github.com/Car-Role/tern/releases/latest">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3.5-3.5M8 10 4.5 6.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Download Tern</span>
+        </a>
+        <a class="btn" href="https://github.com/Car-Role/tern">View the source</a>
+      </div>
+      <p class="fine"><span>Free for individuals and small teams</span><span>Windows, macOS, Linux</span><span>About a 2 MB download</span></p>
+      <div class="window">
+        <img src="assets/review.png" width="1920" height="1200" alt="Tern showing a split diff of a changed file, with the project list on the left and the changed files in the middle">
+      </div>
+    </div>
+
+    <section id="loop">
+      <div class="wrap">
+        <h2>Built for the review loop</h2>
+        <p class="sub">
+          When agents write the code, your work moves from typing to reviewing. Tern keeps that loop in one
+          window, with every step one keystroke away.
+        </p>
+        <ol class="loop">
+          <li>
+            <span class="step">01</span>
+            <h3>Watch</h3>
+            <p>Every repo and worktree in one list. Repos an agent is changing show <em>working</em>, and Tern tells you when they go quiet.</p>
+            <kbd>Alt</kbd> <kbd>↑</kbd> <kbd>↓</kbd>
+          </li>
+          <li>
+            <span class="step">02</span>
+            <h3>Review</h3>
+            <p>Step through changed files with the arrow keys. Split or unified diffs, or everything a branch did since main.</p>
+            <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Ctrl D</kbd>
+          </li>
+          <li>
+            <span class="step">03</span>
+            <h3>Hand off</h3>
+            <p>Copy a path with line numbers, an <code>@mention</code>, a diff, a failing CI step, or a ticket, ready to paste to an agent.</p>
+            <kbd>Ctrl Shift C</kbd>
+          </li>
+          <li>
+            <span class="step">04</span>
+            <h3>Ship</h3>
+            <p>Stage, commit, and push. Pull and push always show you the commits first, and warn before you push to main.</p>
+            <kbd>S</kbd> <kbd>Ctrl Enter</kbd>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="feature">
+          <div class="copy">
+            <h3>History that knows what you're missing</h3>
+            <p>A commit graph with branches and tags, and the commits on the remote that you haven't pulled yet, right above your branch.</p>
+            <ul>
+              <li>Long runs of new commits fold into one row</li>
+              <li>Review everything a pull would bring as one diff</li>
+              <li>Reloads on its own when a branch moves</li>
+            </ul>
+          </div>
+          <img class="shot" src="assets/history.png" width="1920" height="1200" loading="lazy" alt="The History tab with a commit graph and fifteen incoming commits folded above the local branch">
+        </div>
+
+        <div class="feature flip">
+          <div class="copy">
+            <h3>Your tickets, next to your code</h3>
+            <p>Azure DevOps work items and GitHub issues assigned to you, grouped by state, with the description, repro steps, linked commits, and images.</p>
+            <ul>
+              <li>Copy a ticket as plain text for an agent</li>
+              <li>Copy a branch name like <code>bug/4790-grid-loses-its-sort</code></li>
+              <li>Read only: Tern never changes a ticket</li>
+            </ul>
+          </div>
+          <img class="shot" src="assets/tickets.png" width="1920" height="1200" loading="lazy" alt="The tickets view with tickets grouped by state and one ticket's details">
+        </div>
+
+        <div class="feature">
+          <div class="copy">
+            <h3>CI without the browser tab</h3>
+            <p>Pipeline runs from Azure DevOps and GitHub Actions, with the stage, job, and step that failed, and its error.</p>
+            <ul>
+              <li>Running pipelines refresh on their own</li>
+              <li>The status bar tells you when one finishes</li>
+              <li>Copy the failing steps for an agent in one click</li>
+            </ul>
+          </div>
+          <img class="shot" src="assets/ci.png" width="1920" height="1200" loading="lazy" alt="A CI run showing a failed test step and a warning">
+        </div>
+
+        <div class="feature flip">
+          <div class="copy">
+            <h3>Every project at a glance</h3>
+            <p>Group repos into spaces like Work and Personal. See what changed, what's behind, and what's being worked on, across all of them.</p>
+            <ul>
+              <li>Fetch, pull, or push many repos at once</li>
+              <li>Worktrees fold under their repo</li>
+              <li>Twelve themes, dark and light</li>
+            </ul>
+          </div>
+          <img class="shot" src="assets/overview.png" width="1920" height="1200" loading="lazy" alt="The overview table listing every project with its branch, changes, and activity">
+        </div>
+      </div>
+    </section>
+
+    <section id="more">
+      <div class="wrap">
+        <h2>And the rest of the toolbox</h2>
+        <p class="sub">Everything a review session needs, and nothing a code editor would add on top.</p>
+        <div class="more">
+          <div><b>Pull requests</b><span>From GitHub and Azure DevOps, with the diff computed locally against the merge base.</span></div>
+          <div><b>Real terminals</b><span>Tasks and shells run on pseudo-terminals, so prompts, arrow keys, and full-screen tools work.</span></div>
+          <div><b>Tasks</b><span>Finds npm scripts, VS Code tasks, .NET, Cargo, Gradle, Make, and Docker Compose. Pin the ones you use.</span></div>
+          <div><b>Search</b><span>Code, file names, commits, branches, PRs, and issues, in one repo, a space, or every repo.</span></div>
+          <div><b>Branches and worktrees</b><span>Switch, create, and remove, or open a branch in a new worktree for an agent.</span></div>
+          <div><b>Go to definition</b><span>Jump to a name's definition or every place it's used, without a language server.</span></div>
+          <div><b>Markdown</b><span>Open <code>.md</code> files as a rendered page, from Tern or straight from your file manager.</span></div>
+          <div><b>Quick edit</b><span>Fix a typo in place, save, and keep reviewing.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="keyboard">
+      <div class="wrap">
+        <h2>Keyboard first, mouse friendly</h2>
+        <p class="sub">Every action has a shortcut. Press <kbd>F1</kbd> in Tern for the full list.</p>
+        <table class="keys">
+          <tr><td><kbd>Ctrl K</kbd> <kbd>Ctrl P</kbd> <kbd>Ctrl Shift P</kbd></td><td>Go to a project, a file, or a command</td></tr>
+          <tr><td><kbd>Ctrl Shift F</kbd></td><td>Search across repos</td></tr>
+          <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Step through changes; each one opens as you move</td></tr>
+          <tr><td><kbd>Ctrl Shift C</kbd></td><td>Copy a path, path with lines, <code>@mention</code>, or diff</td></tr>
+          <tr><td><kbd>S</kbd> <kbd>Ctrl Enter</kbd></td><td>Stage, then commit</td></tr>
+          <tr><td><kbd>Ctrl B</kbd></td><td>Branches and worktrees</td></tr>
+          <tr><td><kbd>Ctrl Shift T</kbd></td><td>Your tickets</td></tr>
+          <tr><td><kbd>Ctrl `</kbd></td><td>A terminal in this project</td></tr>
+          <tr><td><kbd>F12</kbd> <kbd>Shift F12</kbd></td><td>Go to definition, or find where it's used</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section id="download">
+      <div class="wrap">
+        <h2>Download</h2>
+        <p class="sub">Pick the file for your system on the <a href="https://github.com/Car-Role/tern/releases/latest">latest release</a>.</p>
+        <table class="dl">
+          <thead><tr><th>System</th><th>File</th></tr></thead>
+          <tbody>
+            <tr data-os="win"><td>Windows</td><td>Tern_x64-setup.exe or .msi</td></tr>
+            <tr data-os="winarm"><td>Windows on ARM</td><td>Tern_arm64-setup.exe</td></tr>
+            <tr data-os="macarm"><td>macOS, Apple Silicon</td><td>Tern_aarch64.dmg</td></tr>
+            <tr data-os="macintel"><td>macOS, Intel</td><td>Tern_x64.dmg</td></tr>
+            <tr data-os="linux"><td>Linux x64</td><td>.AppImage, .deb, or .rpm</td></tr>
+            <tr data-os="linuxarm"><td>Linux ARM64</td><td>.AppImage, .deb, or .rpm (arm64)</td></tr>
+          </tbody>
+        </table>
+        <div class="notes">
+          <div><b>Windows</b>The builds aren't code-signed yet. If SmartScreen appears, click More info, then Run anyway.</div>
+          <div><b>macOS</b>Open Tern the first time with right-click, then Open, so macOS lets an unsigned app run.</div>
+          <div><b>What it needs</b>git, plus <code>gh</code> for GitHub or <code>az</code> for Azure DevOps if you use them. Tern reuses their sign-ins.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="built">
+      <div class="wrap principles">
+        <div>
+          <h2>Small on purpose</h2>
+          <p class="sub" style="margin-bottom:20px">Tern is built with Tauri 2, Rust, Svelte, and CodeMirror. It uses your system's web view, so the app stays tiny.</p>
+          <ul>
+            <li>Starts in under a second; tabs load only when you open them.</li>
+            <li>Runs git so it never blocks an agent using the same repo.</li>
+            <li>No accounts, no cloud, no telemetry. Sign-in stays with <code>gh</code> and <code>az</code>.</li>
+            <li>No plugins or language servers to set up.</li>
+          </ul>
+        </div>
+        <div>
+          <h2>Build it yourself</h2>
+          <p class="sub" style="margin-bottom:20px">You need Node.js and Rust.</p>
+<pre><span class="c"># clone and run</span>
+git clone https://github.com/Car-Role/tern
+cd tern
+npm install
+npm run app
+
+<span class="c"># an installer for your system</span>
+npm run release</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Tern · <a href="https://github.com/Car-Role/tern/blob/main/LICENSE">Business Source License 1.1</a></span>
+      <a href="https://github.com/Car-Role/tern">GitHub</a>
+      <a href="https://github.com/Car-Role/tern/releases">Releases</a>
+      <a href="https://github.com/Car-Role/tern/blob/main/docs/guide.md">Guide</a>
+      <a href="https://github.com/Car-Role/tern/issues">Report a problem</a>
+    </div>
+  </footer>
+
+  <script>
+    // Name the visitor's system on the download button and mark its row.
+    (function () {
+      var ua = navigator.userAgent, p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+      var os = /Win/i.test(p) || /Windows/i.test(ua) ? "win" : /Mac/i.test(p) || /Mac OS/i.test(ua) ? "mac" : /Linux/i.test(p) || /Linux/i.test(ua) ? "linux" : "";
+      if (/iPhone|iPad|Android/i.test(ua)) os = "";
+      var names = { win: "Windows", mac: "macOS", linux: "Linux" };
+      if (!os) return;
+      document.querySelector("#dl-main span").textContent = "Download for " + names[os];
+      var row = document.querySelector('.dl tr[data-os="' + (os === "mac" ? "macarm" : os) + '"]');
+      if (row) row.classList.add("you");
+    })();
+  </script>
+</body>
+</html>
