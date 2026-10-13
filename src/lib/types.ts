@@ -20,6 +20,30 @@ export type Change = {
   unstaged: boolean;
   /** Unix seconds when the file last changed on disk. */
   mtime: number | null;
+  /** A diff range for this one file, when it differs from the review's (new files in a stash). */
+  revBase?: string;
+  revHead?: string;
+};
+
+export type Stash = {
+  /** stash@{0} and so on. It changes as stashes come and go, so actions use `sha`. */
+  name: string;
+  sha: string;
+  message: string;
+  branch: string;
+  /** Unix seconds. */
+  time: number;
+  files: number;
+  untracked: string[];
+};
+
+export type StashFiles = {
+  base: string;
+  head: string;
+  files: Change[];
+  untracked: string[];
+  untrackedHead: string | null;
+  emptyTree: string;
 };
 
 export type Commit = {

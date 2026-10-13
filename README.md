@@ -40,8 +40,9 @@ every action one keystroke away. It starts in under a second and stays out of yo
   did since it left `main`. Commits on the remote that you don't have yet show above your branch.
 - **Hand off to agents.** Copy paths as relative, absolute, `path:line`, or `@mentions`, or copy a diff,
   a failing CI run, or a ticket as plain text for an agent.
-- **Git without the ceremony.** Stage, commit, fetch, pull, and push. Pull and push always show what will
-  happen first. Branches and worktrees are one shortcut away.
+- **Git without the ceremony.** Stage, commit, stash, discard, fetch, pull, and push. Discards can be undone,
+  pull and push always show what will happen first, and an unpushed commit can be taken back.
+  Branches and worktrees are one shortcut away.
 - **Pull requests, issues, CI, and tickets.** From GitHub (through `gh`) and Azure DevOps (through `az`),
   in the same views.
 - **Tasks and terminals.** Tern finds your npm scripts, VS Code tasks, .NET, Cargo, Gradle, Make, and

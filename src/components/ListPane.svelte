@@ -4,14 +4,15 @@
   import { ago, agoIso, baseName, dirName, duration, kindLetter } from "../lib/format";
   import { rank } from "../lib/fuzzy";
   import { hover, type HoverData } from "../lib/hover";
-  import { ciMenu, commitMenu, fileMenu, issueMenu, prMenu, repoMenu, taskMenu } from "../lib/menus";
+  import { ciMenu, commitMenu, fileMenu, issueMenu, prMenu, repoMenu, sectionMenu, stashMenu, taskMenu } from "../lib/menus";
   import { FOLD, foldIncoming, layoutGraph, parseRefs, type HistItem } from "../lib/graph";
   import GraphCell from "./GraphCell.svelte";
   import { popOnDone } from "../lib/motion";
-  import type { Change, CiRun, Commit, Issue, PullRequest, Task, TaskSource } from "../lib/types";
+  import type { Change, CiRun, Commit, Issue, PullRequest, Stash, Task, TaskSource } from "../lib/types";
 
   type Row =
-    | { type: "header"; id: string; label: string; count: number; section?: "staged" | "unstaged" }
+    | { type: "header"; id: string; label: string; count: number; section?: "staged" | "unstaged" | "stashes" }
+    | { type: "stash"; id: string; stash: Stash }
     | { type: "task"; id: string; task: Task; custom: number | null; pinned: boolean }
     | { type: "change"; id: string; change: Change; section: "staged" | "unstaged" | null }
     | { type: "dir"; id: string; path: string; name: string; depth: number; open: boolean }
@@ -46,7 +47,7 @@
   const repo = $derived(app.current!);
   const s = $derived(app.summary);
   const reviewing = $derived(
-    !!app.review && (app.tab === "prs" || app.tab === "history" || (app.review.kind === "branch" && app.tab === "changes")),
+    !!app.review && (app.tab === "prs" || app.tab === "history" || ((app.review.kind === "branch" || app.review.kind === "stash") && app.tab === "changes")),
   );
   let showCommits = $state(false);
 
@@ -85,6 +86,11 @@
       if (unstaged.length) {
         out.push({ type: "header", id: "h:unstaged", label: "Changes", count: unstaged.length, section: "unstaged" });
         for (const c of unstaged) out.push({ type: "change", id: "u:" + c.path, change: c, section: "unstaged" });
+      }
+      const stashes = app.stashes[repo] ?? [];
+      if (stashes.length) {
+        out.push({ type: "header", id: "h:stashes", label: "Stashes", count: stashes.length, section: "stashes" });
+        for (const st of stashes) out.push({ type: "stash", id: "st:" + st.sha, stash: st });
       }
       return out;
     }
@@ -250,6 +256,20 @@
     };
   }
 
+  function stashCard(st: Stash): HoverData {
+    return {
+      title: st.message,
+      rows: [
+        { label: "Name", value: st.name, mono: true },
+        { label: "Made on", value: st.branch || "a detached HEAD", mono: true },
+        { label: "When", value: ago(st.time) },
+        { label: "Changed files", value: String(st.files) },
+        ...(st.untracked.length ? [{ label: "New files", value: st.untracked.slice(0, 4).join(", ") + (st.untracked.length > 4 ? ` and ${st.untracked.length - 4} more` : "") }] : []),
+      ],
+      hint: "Enter shows what it holds. Pop puts it back. Right-click for apply and drop.",
+    };
+  }
+
   function taskCard(t: Task): HoverData {
     const last = app.lastRun(repo, t.id);
     const rows: NonNullable<HoverData["rows"]> = [{ label: "Runs", value: t.command, mono: true }];
@@ -319,6 +339,7 @@
     else if (r.type === "task" && !preview) app.runTask(r.task);
     else if (r.type === "issue" && !preview) app.openIssue(r.issue.number);
     else if (r.type === "run") app.openRun(r.run);
+    else if (r.type === "stash" && !preview) app.openStash(r.stash);
   }
 
   async function moveTo(i: number, preview = true) {
@@ -551,7 +572,7 @@
     {/each}
   </div>
 
-  {#if app.tab === "changes" && (app.canReviewBranch(repo) || app.review?.kind === "branch")}
+  {#if app.tab === "changes" && app.review?.kind !== "stash" && (app.canReviewBranch(repo) || app.review?.kind === "branch")}
     <div class="toolbar">
       <div class="seg" role="group" aria-label="What to show">
         <button class:on={!reviewing} onclick={() => reviewing && app.closeReview()}>Uncommitted</button>
@@ -572,6 +593,11 @@
       </div>
       {#if app.review.pr}
         <button class="act small" onclick={() => app.openPrInBrowser()}>Open</button>
+      {/if}
+      {#if app.review.stash}
+        {@const st = app.review.stash}
+        <button class="act small" onclick={() => app.applyStash(st, true)} title="Apply it and remove it from the list">Pop</button>
+        <button class="act small" onclick={(e) => stashMenu(e, st)} aria-label="More stash actions">⋯</button>
       {/if}
       {#if app.review.kind === "branch" && (app.review.candidates?.length ?? 0) > 1}
         <select class="basepick" value={app.review.baseRef} onchange={(e) => app.openBranchReview(e.currentTarget.value)} aria-label="Compare with">
@@ -765,6 +791,7 @@
           else if (r.type === "pr") prMenu(e, r.pr);
           else if (r.type === "issue") issueMenu(e, r.issue);
           else if (r.type === "run") ciMenu(e, r.run);
+          else if (r.type === "stash") stashMenu(e, r.stash);
           else if (r.type === "task") taskMenu(e, r.task, r.custom);
           else if (r.type === "dir") fileMenu(e, r.path);
           else return;
@@ -776,6 +803,7 @@
           : r.type === "pr" ? prCard(r.pr)
           : r.type === "issue" ? issueCard(r.issue)
           : r.type === "run" ? runCard(r.run)
+          : r.type === "stash" ? stashCard(r.stash)
           : r.type === "task" ? taskCard(r.task)
           : r.type === "file" && (filter || r.name.length > 34) ? { title: r.path, hint: "Right-click to copy the path or @ mention" }
           : null}
@@ -788,6 +816,26 @@
           {:else if r.section === "unstaged"}
             <button class="hbtn" onclick={() => app.stage("all")} title="Stage all">Stage all</button>
           {/if}
+          {#if r.section === "staged" || r.section === "unstaged"}
+            {@const sec = r.section}
+            <button class="hbtn more" aria-label="Stash or discard"
+              onclick={(e) => { e.stopPropagation(); const b = e.currentTarget.getBoundingClientRect(); sectionMenu({ x: b.left, y: b.bottom + 4 }, sec); }}
+              use:hover={() => ({ title: "Stash or discard", text: "Stash these changes, or throw them away." })}>⋯</button>
+          {/if}
+        {:else if r.type === "stash"}
+          <span class="stashicon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="13" height="13"><path d="M2.5 5.5h11v7a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM2 3h12v2.5H2zM6.5 8h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>
+          </span>
+          <div class="two">
+            <div class="line1"><span class="ptitle">{r.stash.message}</span></div>
+            <div class="line2 mono">
+              {#if app.reviewLoading === r.stash.sha}<span class="amber">loading…</span>{/if}
+              <span>{r.stash.branch || "detached"}</span>
+              <span class="faint">{r.stash.files + r.stash.untracked.length} {r.stash.files + r.stash.untracked.length === 1 ? "file" : "files"}</span>
+              <span class="faint">{ago(r.stash.time)}</span>
+            </div>
+          </div>
+          <button class="tbtn hover" onclick={(e) => { e.stopPropagation(); app.applyStash(r.stash, true); }} title="Apply it and remove it from the list">Pop</button>
         {:else if r.type === "task"}
           {@const last = app.lastRun(repo, r.task.id)}
           {@const where = r.pinned ? taskGroup(r.task) : ""}
@@ -1659,6 +1707,20 @@
   .seg button.on {
     background: var(--raised);
     color: var(--text);
+  }
+  .row.stash {
+    padding: 6px 8px;
+  }
+  .stashicon {
+    color: var(--muted);
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+  .hbtn.more {
+    font-size: 13px;
+    line-height: 1;
+    padding: 1px 6px;
   }
   .row.run {
     padding: 6px 8px;

@@ -22,6 +22,7 @@ import type {
   Issue,
   RunInfo,
   CiRun,
+  Stash,
   History,
   Ticket,
   TicketDetail,
@@ -43,7 +44,7 @@ export const ALL_TABS: TabId[] = ["changes", "files", "prs", "issues", "history"
 /** A list of files from a commit or pull request, shown in place of the working-tree changes. */
 export type Review = {
   /** "branch": everything a branch or worktree changed since it split from its base, including uncommitted work. */
-  kind: "commit" | "pr" | "branch";
+  kind: "commit" | "pr" | "branch" | "stash";
   commits?: Commit[];
   baseRef?: string;
   candidates?: string[];
@@ -53,6 +54,8 @@ export type Review = {
   head: string;
   files: Change[];
   pr?: PullRequest;
+  /** The stash being looked at (kind "stash"). */
+  stash?: Stash;
 };
 
 export type View =
@@ -185,6 +188,11 @@ class Store {
   logAll = $state(saved("logAll") === "1");
   issues = $state<Record<string, { loading: boolean; error: string | null; items: Issue[] }>>({});
   ci = $state<Record<string, { loading: boolean; error: string | null; items: CiRun[]; at: number }>>({});
+  /** Stashes per repo, and the branch-files stamp they were read at. */
+  stashes = $state<Record<string, Stash[]>>({});
+  private stashStamp: Record<string, number | null | undefined> = {};
+  /** The last discard, so it can be undone for a few minutes. */
+  lastDiscard = $state<{ repo: string; backup: string; tracked: string[]; untracked: number; count: number; at: number } | null>(null);
   issueState = $state<"open" | "closed" | "all">((saved("issueState") as "open" | "closed" | "all") || "open");
   /** The repos that "Move to a space" acts on. Empty means the open project. */
   moveTargets = $state<string[]>([]);
@@ -764,6 +772,9 @@ class Store {
     this.checkQuiet();
     this.checkLogs(results.map((s) => s.path));
     this.checkCi();
+    // A stash changes git's branch files, so the stamp moves when stashes come and go.
+    const cur = this.current;
+    if (cur && this.tab === "changes" && this.stashStamp[cur] !== this.sums[cur]?.refsStamp) this.loadStashes(cur);
     this.checkBranchReview();
   }
 
@@ -1155,6 +1166,7 @@ class Store {
   }
 
   private loadTab(repo: string) {
+    if (this.tab === "changes") this.loadStashes(repo);
     if (this.tab === "tasks") this.loadTasks(repo);
     if (this.tab === "issues") this.loadIssues(repo);
     if (this.tab === "ci") this.loadCi(repo);
@@ -1219,7 +1231,7 @@ class Store {
       rel: c.path,
       oldRel: c.oldPath,
       changeKind: c.kind,
-      rev: this.review ? { base: this.review.base, head: this.review.head } : null,
+      rev: c.revBase && c.revHead ? { base: c.revBase, head: c.revHead } : this.review ? { base: this.review.base, head: this.review.head } : null,
     };
   }
 
@@ -1954,6 +1966,168 @@ class Store {
       await api.stage(repo, changes === "all" ? [] : this.pathsFor(changes));
     } catch (e) {
       this.notify(`Stage failed: ${firstLine(String(e))}`, "err");
+    }
+    await this.refresh([repo]);
+  }
+
+  // Stashes and discarding
+
+  async loadStashes(repo: string) {
+    this.stashStamp[repo] = this.sums[repo]?.refsStamp;
+    try {
+      this.stashes = { ...this.stashes, [repo]: await api.stashList(repo) };
+    } catch {
+      this.stashes = { ...this.stashes, [repo]: [] };
+    }
+  }
+
+  /** The changes an action is for: the right-clicked one, or all selected ones when it is part of the selection. */
+  changesFor(change: Change): Change[] {
+    const all = this.summary?.changes ?? [];
+    if (this.selected.length > 1 && this.selected.includes(change.path)) return all.filter((c) => this.selected.includes(c.path));
+    return [change];
+  }
+
+  /** Stashes changes (new files included): all of them, or the given files. */
+  async stashChanges(changes: Change[] | "all") {
+    const repo = this.current;
+    const s = this.summary;
+    if (!repo || !s?.changes.length) return this.notify("There are no changes to stash.", "info");
+    const list = changes === "all" ? s.changes : changes;
+    const first = baseName(list[0].path);
+    const message = list.length === 1 ? first : `${first} and ${list.length - 1} more`;
+    try {
+      await api.stashPush(repo, message, changes === "all" ? [] : this.pathsFor(list));
+      this.selected = [];
+      if (this.view?.kind === "diff" || this.view?.kind === "file") this.view = null;
+      this.notify(`Stashed ${list.length} ${list.length === 1 ? "file" : "files"}. Find them under Stashes.`, "ok");
+    } catch (e) {
+      this.notify(`Stash failed: ${firstLine(String(e))}`, "err");
+    }
+    await this.refresh([repo]);
+    await this.loadStashes(repo);
+  }
+
+  /** Throws away local changes, after asking. Changed files can be brought back with undoDiscard. */
+  async discardChanges(changes: Change[] | "all") {
+    const repo = this.current;
+    const s = this.summary;
+    if (!repo || !s?.changes.length) return this.notify("There are no changes to discard.", "info");
+    const list = changes === "all" ? s.changes : changes;
+    const fresh = list.filter((c) => c.kind === "untracked");
+    const tracked = list.filter((c) => c.kind !== "untracked");
+    const n = list.length;
+    const ok = await this.ask({
+      title: `Discard ${n === 1 ? baseName(list[0].path) : `${n} files`} in ${baseName(repo)}?`,
+      body: [
+        tracked.length ? `${tracked.length} changed ${tracked.length === 1 ? "file goes" : "files go"} back to the last commit, staged and unstaged edits both.` : "",
+        fresh.length ? `${fresh.length} new ${fresh.length === 1 ? "file goes" : "files go"} to the Recycle Bin.` : "",
+        "You can undo this from the status bar for a few minutes.",
+      ].filter(Boolean).join(" "),
+      list: list.slice(0, 40).map((c) => ({ name: c.path, detail: c.kind === "untracked" ? "new file, to the Recycle Bin" : c.kind })),
+      listLabel: n > 40 ? `First 40 of ${n} files` : "Files",
+      confirm: `Discard ${n === 1 ? "it" : `${n} files`}`,
+    });
+    if (!ok) return;
+    try {
+      const trackedPaths = this.pathsFor(tracked);
+      const backup = await api.discard(repo, trackedPaths, fresh.map((c) => c.path));
+      this.lastDiscard = { repo, backup, tracked: trackedPaths, untracked: fresh.length, count: n, at: Date.now() };
+      this.selected = [];
+      if (this.view?.kind === "diff" && list.some((c) => c.path === this.view!.rel)) this.view = null;
+      this.notify(`Discarded ${n} ${n === 1 ? "file" : "files"}`, "ok");
+    } catch (e) {
+      this.notify(`Discard failed: ${firstLine(String(e))}`, "err");
+    }
+    await this.refresh([repo]);
+  }
+
+  async undoDiscard() {
+    const d = this.lastDiscard;
+    if (!d) return this.notify("There is no discard to undo.", "info");
+    this.lastDiscard = null;
+    try {
+      await api.undoDiscard(d.repo, d.backup, d.tracked);
+      const bin = d.untracked ? ` ${d.untracked} new ${d.untracked === 1 ? "file is" : "files are"} in the Recycle Bin; restore ${d.untracked === 1 ? "it" : "them"} from there.` : "";
+      this.notify(`Brought back the changed files.${bin}`, "ok");
+    } catch (e) {
+      this.notify(`Undo failed: ${firstLine(String(e))}`, "err");
+    }
+    await this.refresh([d.repo]);
+  }
+
+  /** Shows what a stash holds, as a review (new files included). */
+  async openStash(st: Stash) {
+    const repo = this.current;
+    if (!repo) return;
+    this.reviewLoading = st.sha;
+    try {
+      const f = await api.stashFiles(repo, st.sha);
+      const fresh: Change[] = f.untrackedHead
+        ? f.untracked.map((path) => ({ path, oldPath: null, kind: "added", staged: false, unstaged: false, mtime: null, revBase: f.emptyTree, revHead: f.untrackedHead! }))
+        : [];
+      this.enterReview({ kind: "stash", stash: st, title: st.message, subtitle: `${st.name} on ${st.branch || "a detached HEAD"}`, base: f.base, head: f.head, files: [...f.files, ...fresh] });
+    } catch (e) {
+      this.notify(firstLine(String(e)), "err");
+    } finally {
+      this.reviewLoading = null;
+    }
+  }
+
+  async applyStash(st: Stash, pop: boolean) {
+    const repo = this.current;
+    if (!repo) return;
+    try {
+      await api.stashApply(repo, st.sha, pop);
+      if (this.review?.head === st.sha) this.closeReview();
+      this.notify(pop ? `Popped "${st.message}"` : `Applied "${st.message}". The stash is still saved.`, "ok");
+    } catch (e) {
+      // A conflict leaves the stash in place; git says which files.
+      this.notify(`${pop ? "Pop" : "Apply"} stopped: ${firstLine(String(e))}`, "err");
+    }
+    await this.refresh([repo]);
+    await this.loadStashes(repo);
+  }
+
+  async dropStash(st: Stash) {
+    const repo = this.current;
+    if (!repo) return;
+    const n = st.files + st.untracked.length;
+    const ok = await this.ask({
+      title: `Drop the stash "${st.message}"?`,
+      body: `It holds ${n} ${n === 1 ? "file" : "files"} from ${st.branch || "a detached HEAD"}. Tern cannot bring a dropped stash back.`,
+      confirm: "Drop stash",
+    });
+    if (!ok) return;
+    try {
+      await api.stashDrop(repo, st.sha);
+      if (this.review?.head === st.sha) this.closeReview();
+      this.notify(`Dropped "${st.message}"`, "ok");
+    } catch (e) {
+      this.notify(`Drop failed: ${firstLine(String(e))}`, "err");
+    }
+    await this.loadStashes(repo);
+  }
+
+  /** Undoes the last commit when it is not pushed. Its changes come back staged. */
+  async undoLastCommit() {
+    const repo = this.current;
+    const s = this.summary;
+    if (!repo || !s?.last) return;
+    if (s.upstream && !s.ahead) return this.notify("The last commit is already pushed, so Tern will not undo it.", "info");
+    const ok = await this.ask({
+      title: `Undo the last commit in ${baseName(repo)}?`,
+      body: `"${s.last.subject}" is removed from ${s.branch ?? "this branch"}. Its changes come back as staged changes, so nothing is lost. It is not pushed yet.`,
+      code: "git reset --soft HEAD~1",
+      confirm: "Undo commit",
+    });
+    if (!ok) return;
+    try {
+      await api.undoCommit(repo);
+      this.commitMsg = { ...this.commitMsg, [repo]: s.last.body ? `${s.last.subject}\n\n${s.last.body}` : s.last.subject };
+      this.notify("Undid the commit. Its changes are staged, and its message is back in the commit box.", "ok");
+    } catch (e) {
+      this.notify(firstLine(String(e)), "err");
     }
     await this.refresh([repo]);
   }

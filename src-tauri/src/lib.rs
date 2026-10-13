@@ -10,6 +10,7 @@ mod run;
 mod runner;
 mod scan;
 mod search;
+mod stash;
 mod tasks;
 mod tickets;
 
@@ -311,6 +312,46 @@ async fn stage(repo: String, paths: Vec<String>) -> Res<()> {
 #[tauri::command]
 async fn unstage(repo: String, paths: Vec<String>) -> Res<()> {
     blocking(move || git::unstage(&repo, &paths)).await
+}
+
+#[tauri::command]
+async fn stash_list(repo: String) -> Res<Vec<stash::Stash>> {
+    blocking(move || stash::list(&repo)).await
+}
+
+#[tauri::command]
+async fn stash_push(repo: String, message: String, paths: Vec<String>) -> Res<String> {
+    blocking(move || stash::push(&repo, &message, &paths)).await
+}
+
+#[tauri::command]
+async fn stash_apply(repo: String, sha: String, pop: bool) -> Res<String> {
+    blocking(move || stash::apply(&repo, &sha, pop)).await
+}
+
+#[tauri::command]
+async fn stash_drop(repo: String, sha: String) -> Res<String> {
+    blocking(move || stash::drop(&repo, &sha)).await
+}
+
+#[tauri::command]
+async fn stash_files(repo: String, sha: String) -> Res<stash::StashFiles> {
+    blocking(move || stash::files(&repo, &sha)).await
+}
+
+#[tauri::command]
+async fn discard(repo: String, tracked: Vec<String>, untracked: Vec<String>) -> Res<String> {
+    blocking(move || stash::discard(&repo, &tracked, &untracked)).await
+}
+
+#[tauri::command]
+async fn undo_discard(repo: String, backup: String, tracked: Vec<String>) -> Res<()> {
+    blocking(move || stash::undo_discard(&repo, &backup, &tracked)).await
+}
+
+#[tauri::command]
+async fn undo_commit(repo: String) -> Res<String> {
+    blocking(move || stash::undo_commit(&repo)).await
 }
 
 #[tauri::command]
@@ -620,6 +661,14 @@ pub fn run() {
             stage,
             unstage,
             commit,
+            stash_list,
+            stash_push,
+            stash_apply,
+            stash_drop,
+            stash_files,
+            discard,
+            undo_discard,
+            undo_commit,
             list_prs,
             prepare_pr,
             open_in,

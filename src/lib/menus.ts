@@ -3,7 +3,7 @@
 import { app, type MenuItem } from "./store.svelte";
 import { openUrl } from "./api";
 import { absolutePath, baseName, commitUrl, fileUrl, withLines } from "./format";
-import type { Change, CiRun, Commit, Issue, PullRequest, Task } from "./types";
+import type { Change, CiRun, Commit, Issue, PullRequest, Stash, Task } from "./types";
 
 type At = MouseEvent | { x: number; y: number };
 
@@ -117,11 +117,17 @@ export function fileMenu(e: At, rel: string, change?: Change) {
     ...(change && change.kind !== "deleted" ? [item("Show the whole file", () => app.openFile(rel))] : []),
     ...(change ? [item("Show the diff", () => app.openChange(change))] : []),
     ...(change && !inReview
-      ? [
-          change.staged && !change.unstaged
-            ? item("Unstage", () => app.unstage([change]))
-            : item("Stage", () => app.stage([change])),
-        ]
+      ? (() => {
+          const group = app.changesFor(change);
+          const n = group.length > 1 ? ` ${group.length} files` : "";
+          return [
+            change.staged && !change.unstaged
+              ? item(`Unstage${n}`, () => app.unstage(group))
+              : item(`Stage${n}`, () => app.stage(group)),
+            item(`Stash${n || " this file"}`, () => app.stashChanges(group)),
+            item(`Discard${n ? n : " changes"}…`, () => app.discardChanges(group), { danger: true }),
+          ];
+        })()
       : []),
     item("Open in VS Code", () => {
       app.openFile(rel);
@@ -142,6 +148,9 @@ export function commitMenu(e: At, c: Commit) {
   const web = commitUrl(s?.remote, c.sha);
   const items: MenuItem[] = [
     item("Show the files it changed", () => app.openCommit(c)),
+    ...(s?.last?.sha === c.sha && (!s.upstream || s.ahead > 0)
+      ? [item("Undo this commit (keep its changes)…", () => app.undoLastCommit())]
+      : []),
     "sep",
     item(`Copy commit ID ${c.short}`, () => app.copyValue(c.short)),
     item("Copy the full commit ID", () => app.copyValue(c.sha)),
@@ -179,6 +188,36 @@ export function ciMenu(e: At, run: CiRun) {
     ...(run.sha ? [item(`Copy commit ID ${run.sha.slice(0, 7)}`, () => app.copyValue(run.sha.slice(0, 7)))] : []),
   ];
   app.showMenu(e, `${run.name} #${run.number}`, items);
+}
+
+export function stashMenu(e: At, st: Stash) {
+  const items: MenuItem[] = [
+    item("Show what it holds", () => app.openStash(st)),
+    "sep",
+    item("Pop (apply and remove)", () => app.applyStash(st, true)),
+    item("Apply (keep the stash)", () => app.applyStash(st, false)),
+    "sep",
+    item(`Copy its name ${st.name}`, () => app.copyValue(st.name)),
+    item("Copy the message", () => app.copyValue(st.message)),
+    "sep",
+    item("Drop…", () => app.dropStash(st), { danger: true }),
+  ];
+  app.showMenu(e, st.message, items);
+}
+
+/** The ⋯ menu on the Staged and Changes headers. */
+export function sectionMenu(e: At, section: "staged" | "unstaged") {
+  const all = app.summary?.changes ?? [];
+  const group = section === "staged" ? all.filter((c) => c.staged) : all.filter((c) => c.unstaged);
+  const label = section === "staged" ? "staged" : "unstaged";
+  const items: MenuItem[] = [
+    item(`Stash all changes (${all.length})`, () => app.stashChanges("all")),
+    item(`Stash the ${label} files (${group.length})`, () => app.stashChanges(group)),
+    "sep",
+    item(`Discard the ${label} files (${group.length})…`, () => app.discardChanges(group), { danger: true }),
+    item(`Discard all changes (${all.length})…`, () => app.discardChanges("all"), { danger: true }),
+  ];
+  app.showMenu(e, section === "staged" ? "Staged" : "Changes", items);
 }
 
 export function issueMenu(e: At, issue: Issue) {

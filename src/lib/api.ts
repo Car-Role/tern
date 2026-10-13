@@ -25,6 +25,8 @@ import type {
   History,
   Ticket,
   TicketDetail,
+  Stash,
+  StashFiles,
 } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -99,6 +101,15 @@ export const api = {
   gitAction: (repo: string, action: GitAction) => call<string>("git_action", { repo, action }),
   pending: (repo: string, incoming: boolean) => call<Commit[]>("pending", { repo, incoming }),
   stage: (repo: string, paths: string[]) => call<void>("stage", { repo, paths }),
+  stashList: (repo: string) => call<Stash[]>("stash_list", { repo }),
+  stashPush: (repo: string, message: string, paths: string[]) => call<string>("stash_push", { repo, message, paths }),
+  stashApply: (repo: string, sha: string, pop: boolean) => call<string>("stash_apply", { repo, sha, pop }),
+  stashDrop: (repo: string, sha: string) => call<string>("stash_drop", { repo, sha }),
+  stashFiles: (repo: string, sha: string) => call<StashFiles>("stash_files", { repo, sha }),
+  /** Returns a backup commit of the changed files, for undo. */
+  discard: (repo: string, tracked: string[], untracked: string[]) => call<string>("discard", { repo, tracked, untracked }),
+  undoDiscard: (repo: string, backup: string, tracked: string[]) => call<void>("undo_discard", { repo, backup, tracked }),
+  undoCommit: (repo: string) => call<string>("undo_commit", { repo }),
   unstage: (repo: string, paths: string[]) => call<void>("unstage", { repo, paths }),
   commit: (repo: string, message: string, stageAll: boolean, push: boolean) =>
     call<string>("commit", { repo, message, stageAll, push }),

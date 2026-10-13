@@ -18,6 +18,11 @@
   <span class="msg {app.toast?.kind ?? ''}" role="status" aria-live="polite">
     {#key app.toast?.id}<span class="toast fx-fade">{app.toast?.text ?? ""}</span>{/key}
   </span>
+  {#if app.lastDiscard && app.now * 1000 - app.lastDiscard.at < 180_000}
+    <button class="undo" onclick={() => app.undoDiscard()} title="Bring back the files you discarded">
+      Undo discard of {app.lastDiscard.count} {app.lastDiscard.count === 1 ? "file" : "files"}
+    </button>
+  {/if}
   {#if app.runs.length}
     {@const n = app.runs.filter((r) => r.running).length}
     <button class="tasks" class:live={n > 0} onclick={() => app.setPanel(!app.panelOpen)} title="Show or hide the task panel (Ctrl+J)">
@@ -74,6 +79,16 @@
   }
   .msg.err {
     color: var(--del);
+  }
+  .undo {
+    color: var(--amber);
+    font-size: 11.5px;
+    padding: 1px 8px;
+    border-radius: 4px;
+    background: var(--amber-soft);
+  }
+  .undo:hover {
+    background: var(--amber-sel);
   }
   .tasks {
     color: var(--muted);

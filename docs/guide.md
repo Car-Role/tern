@@ -23,6 +23,15 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
   in the status bar. Files changed in the last 2 minutes get a green dot.
 - Stage (`S`) and commit (`Ctrl Enter`, or `Ctrl Shift Enter` to also push) from the Changes tab.
   With nothing staged, the button commits all changes.
+- Stash and discard. Right-click a file (or several selected files), or use the `⋯` on the Staged and Changes
+  headers: **Stash** saves the changes away, new files included. **Discard** puts changed files back to the
+  last commit and moves new files to the Recycle Bin. It asks first, and the status bar offers **Undo discard**
+  for a few minutes (changed files come back; new files are restored from the Recycle Bin).
+- Stashes show at the bottom of the Changes tab, with their branch, file count, and age. Enter shows what a
+  stash holds as a review, new files included. **Pop** puts it back and removes it; right-click to apply it
+  and keep it, copy its name, or drop it.
+- Undo the last commit (right-click it in History, or "Undo the last commit" in `Ctrl Shift P`) when it is
+  not pushed yet. Its changes come back staged and its message goes back in the commit box.
 - Pull and push always ask first. The dialog lists the commits that come in or go out, and warns about
   local changes, a branch that has split from the remote, no upstream, or pushing straight to main.
   "Commit and push" asks too.

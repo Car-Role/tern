@@ -357,6 +357,15 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     };
     case "base_diff": return { old: text(oldText), new: text(newText) };
     case "base_patch": return "diff --git a/src/app/session.ts b/src/app/session.ts\n+retry\n";
+    case "stash_list": return [
+      { name: "stash@{0}", sha: shaOf(40), message: "Half-done retry settings", branch: "main", time: now - 5400, files: 2, untracked: ["src/lib/retry.config.ts"] },
+      { name: "stash@{1}", sha: shaOf(41), message: "WIP before switching to feat/retry", branch: "feat/retry", time: now - 86400 * 2, files: 1, untracked: [] },
+    ];
+    case "stash_files": return { base: commits[1].sha, head: commits[0].sha, files: changes.slice(0, 2).map((c) => ({ ...c, staged: false, unstaged: false })),
+      untracked: ["src/lib/retry.config.ts"], untrackedHead: commits[2].sha, emptyTree: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" };
+    case "stash_push": case "stash_apply": case "stash_drop": case "undo_discard": return "ok";
+    case "discard": return shaOf(50);
+    case "undo_commit": return commits[0].sha;
     case "stage":
       changes = changes.map((c) => ((args.paths as string[]).length === 0 || args.paths.includes(c.path) ? { ...c, staged: true, unstaged: false } : c));
       return null;
