@@ -6,11 +6,11 @@ product
 
 ## Users
 
-One developer (Carl) who works across many git repos at once, for work (Azure DevOps) and personal projects (GitHub). Much of the code is written by AI agents (Claude Code) in worktrees. Carl's job in Tern is to watch what the agents change, review diffs and pull requests, check CI, pull and push, and hand exact file paths back to agents. Long sessions on a Windows desktop, mostly with the keyboard.
+One developer who works across many git repos at once, for work (Azure DevOps) and personal projects (GitHub). Much of the code is written by AI agents (Claude Code) in worktrees. The user's job in Tern is to watch what the agents change, review diffs and pull requests, check CI, pull and push, and hand exact file paths back to agents. Long sessions on a Windows desktop, mostly with the keyboard.
 
 ## Product Purpose
 
-A very light, fast, keyboard-first viewer for reviewing many git projects. It is not a full editor. Success means: Carl sees what changed across all projects at a glance, reviews it quickly, and gives agents precise context without leaving the app.
+A very light, fast, keyboard-first viewer for reviewing many git projects. It is not a full editor. Success means: the user sees what changed across all projects at a glance, reviews it quickly, and gives agents precise context without leaving the app.
 
 ## Brand Personality
 

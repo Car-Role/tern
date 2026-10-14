@@ -11,6 +11,7 @@
   import IssueView from "./IssueView.svelte";
   import RunView from "./RunView.svelte";
   import MarkdownView from "./MarkdownView.svelte";
+  import HunkPanel from "./HunkPanel.svelte";
   import { codeMenu } from "../lib/menus";
   import { commitUrl } from "../lib/format";
   import { openUrl } from "../lib/api";
@@ -304,6 +305,25 @@
   $effect(() => () => destroy());
 
   const v = $derived(app.view);
+  /** Hunks belong to diffs of the working tree (not commits or pull requests). */
+  const hunkable = $derived(v?.kind === "diff" && !v.rev && v.changeKind !== "deleted");
+  const showHunks = $derived(hunkable && app.hunksOpen);
+  $effect(() => {
+    const cur = app.view;
+    app.stamp;
+    if (!showHunks || cur?.kind !== "diff") return;
+    untrack(() => app.loadHunks(cur.repo, cur.rel, cur.changeKind === "untracked"));
+  });
+  // The hunk panel's line buttons scroll the diff.
+  $effect(() => {
+    const j = app.diffJump;
+    if (!j) return;
+    untrack(() => {
+      const views = viewsNow();
+      const target = views[views.length - 1];
+      if (target) jumpTo(target, Math.min(j.line, target.state.doc.lines));
+    });
+  });
   const isMd = $derived(v?.kind === "file" && /\.(md|markdown|mdx)$/i.test(v.rel));
   const page = $derived(isMd && app.mdPreview && !app.editing && status === "ready");
 
@@ -358,6 +378,9 @@
           <button class:on={app.diffMode === "unified"} onclick={() => app.setDiffMode("unified")}>Unified</button>
           <button class:on={app.diffMode === "split"} onclick={() => app.setDiffMode("split")}>Split</button>
         </div>
+        {#if hunkable}
+          <button class="btn" class:on={app.hunksOpen} onclick={() => app.toggleHunks()} title="Stage, unstage, or discard one block of changes (Ctrl+Shift+H)">Hunks</button>
+        {/if}
         {#if (!v.rev || v.rev.head === "WORKTREE") && v.changeKind !== "deleted"}
           <button class="btn" onclick={() => app.openFile(v.rel, app.lines?.from)} title="Show the whole file">File</button>
         {/if}
@@ -390,8 +413,10 @@
       {#key v.run.id}<RunView repo={v.repo} run={v.run} />{/key}
     {/if}
     {#if page}<MarkdownView text={docText} onLink={openLink} />{/if}
+    {#if showHunks && status === "ready"}<HunkPanel />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="cm" bind:this={host} class:hidden={status !== "ready" || v?.kind === "issue" || v?.kind === "run" || page} oncontextmenu={onContext}></div>
+    <div class="cm" bind:this={host} class:hidden={status !== "ready" || v?.kind === "issue" || v?.kind === "run" || page}
+      class:with-hunks={showHunks} oncontextmenu={onContext}></div>
     {#if status === "loading"}
       <p class="note">Loading…</p>
     {:else if status === "binary"}
@@ -542,6 +567,14 @@
     inset: 0;
     overflow: hidden;
     user-select: text;
+  }
+  .cm.with-hunks {
+    right: min(400px, 45%);
+  }
+  .btn.on {
+    color: var(--text);
+    border-color: var(--line-strong);
+    background: var(--raised);
   }
   .cm.hidden {
     visibility: hidden;

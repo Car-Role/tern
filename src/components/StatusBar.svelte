@@ -18,6 +18,13 @@
   <span class="msg {app.toast?.kind ?? ''}" role="status" aria-live="polite">
     {#key app.toast?.id}<span class="toast fx-fade">{app.toast?.text ?? ""}</span>{/key}
   </span>
+  {#if app.update}
+    {@const u = app.update}
+    <button class="upd" disabled={u.state === "downloading"} onclick={() => app.installUpdate()}
+      title={u.state === "failed" ? "Try the update again" : `Download Tern ${u.info.version} and restart`}>
+      {#if u.state === "downloading"}Updating… {Math.round(u.progress * 100)}%{:else if u.state === "failed"}Update failed, try again{:else}Tern {u.info.version} is ready · Restart to update{/if}
+    </button>
+  {/if}
   {#if app.lastDiscard && app.now * 1000 - app.lastDiscard.at < 180_000}
     <button class="undo" onclick={() => app.undoDiscard()} title="Bring back the files you discarded">
       Undo discard of {app.lastDiscard.count} {app.lastDiscard.count === 1 ? "file" : "files"}
@@ -79,6 +86,17 @@
   }
   .msg.err {
     color: var(--del);
+  }
+  .upd {
+    color: var(--on-accent);
+    background: var(--amber);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 1px 9px;
+    border-radius: 4px;
+  }
+  .upd:disabled {
+    opacity: 0.8;
   }
   .undo {
     color: var(--amber);

@@ -695,15 +695,25 @@ pub fn unstage(repo: &str, paths: &[String]) -> Result<(), String> {
     run::git(p(repo), &args).map(|_| ())
 }
 
+/// True when HEAD is already on a remote branch (pushed), so rewriting it would change shared history.
+pub fn head_is_pushed(repo: &str) -> bool {
+    run::git(p(repo), &["branch", "-r", "--contains", "HEAD"]).map(|t| !t.trim().is_empty()).unwrap_or(false)
+}
+
 /// Commits the staged changes. With `stage_all`, stages everything first. With `push`, pushes after.
-pub fn commit(repo: &str, message: &str, stage_all: bool, push: bool) -> Result<String, String> {
+/// With `amend`, the staged changes and the message replace the last commit (only when it is not pushed).
+pub fn commit(repo: &str, message: &str, stage_all: bool, push: bool, amend: bool) -> Result<String, String> {
     if message.trim().is_empty() {
         return Err("Write a commit message first.".into());
+    }
+    if amend && head_is_pushed(repo) {
+        return Err("The last commit is already pushed, so Tern will not change it.".into());
     }
     if stage_all {
         stage(repo, &[])?;
     }
-    let mut out = run::git_input(p(repo), &["commit", "-F", "-"], message)?;
+    let args: &[&str] = if amend { &["commit", "--amend", "-F", "-"] } else { &["commit", "-F", "-"] };
+    let mut out = run::git_input(p(repo), args, message)?;
     if push {
         let pushed = action(repo, "push").map_err(|e| format!("Committed, but the push failed: {e}"))?;
         out.push('\n');
@@ -802,11 +812,19 @@ u UU N... 100644 100644 100644 100644 a b c conflict.txt\0\
         unstage(&repo, &["src/a.txt".to_string()]).unwrap();
         let a = summary(&repo).changes.into_iter().find(|c| c.path == "src/a.txt").unwrap();
         assert!(!a.staged && a.unstaged);
-        assert!(commit(&repo, "  ", true, false).is_err());
+        assert!(commit(&repo, "  ", true, false, false).is_err());
 
         let stamp_before = summary(&repo).refs_stamp;
         std::thread::sleep(std::time::Duration::from_millis(30));
-        commit(&repo, "second\n\nWith a \"quoted\" body line.", true, false).unwrap();
+        commit(&repo, "second\n\nWith a \"quoted\" body line.", true, false, false).unwrap();
+        // Amend: a new message, and a staged change folded into the same commit.
+        let before = g(&["rev-list", "--count", "HEAD"]);
+        fs::write(dir.join("amended.txt"), "x\n").unwrap();
+        stage(&repo, &["amended.txt".to_string()]).unwrap();
+        commit(&repo, "second, amended\n\nWith a \"quoted\" body line.", false, false, true).unwrap();
+        assert_eq!(g(&["rev-list", "--count", "HEAD"]), before, "amend must not add a commit");
+        assert!(g(&["show", "--name-only", "--format=%s", "HEAD"]).contains("amended.txt"));
+        assert!(g(&["log", "-1", "--format=%s"]).contains("second, amended"));
         assert_ne!(summary(&repo).refs_stamp, stamp_before, "a commit must change the branch stamp");
         assert!(summary(&repo).changes.is_empty());
         let body = g(&["log", "-1", "--format=%B"]);
@@ -815,7 +833,7 @@ u UU N... 100644 100644 100644 100644 a b c conflict.txt\0\
         assert_eq!(parent_of(&repo, &head), first);
         assert_eq!(parent_of(&repo, &first), EMPTY_TREE);
         let changed = rev_files(&repo, &first, &head).unwrap();
-        assert_eq!(changed.len(), 3, "{changed:?}");
+        assert_eq!(changed.len(), 4, "{changed:?}"); // 3 from the commit, 1 added by the amend
         let root_files = rev_files(&repo, EMPTY_TREE, &first).unwrap();
         assert_eq!(root_files.len(), 2);
         let history = log(&repo, 10, false).unwrap().commits;

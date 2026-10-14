@@ -27,6 +27,8 @@ import type {
   TicketDetail,
   Stash,
   StashFiles,
+  FileHunks,
+  PrDraft,
 } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -111,8 +113,13 @@ export const api = {
   undoDiscard: (repo: string, backup: string, tracked: string[]) => call<void>("undo_discard", { repo, backup, tracked }),
   undoCommit: (repo: string) => call<string>("undo_commit", { repo }),
   unstage: (repo: string, paths: string[]) => call<void>("unstage", { repo, paths }),
-  commit: (repo: string, message: string, stageAll: boolean, push: boolean) =>
-    call<string>("commit", { repo, message, stageAll, push }),
+  fileHunks: (repo: string, rel: string) => call<FileHunks>("file_hunks", { repo, rel }),
+  /** mode: stage | unstage | discard. Discard returns a backup commit, for undo. */
+  applyHunk: (repo: string, patch: string, mode: "stage" | "unstage" | "discard") => call<string>("apply_hunk", { repo, patch, mode }),
+  prDraft: (repo: string) => call<PrDraft>("pr_draft", { repo }),
+  prCreate: (repo: string, title: string, body: string, base: string, draft: boolean) => call<string>("pr_create", { repo, title, body, base, draft }),
+  commit: (repo: string, message: string, stageAll: boolean, push: boolean, amend = false) =>
+    call<string>("commit", { repo, message, stageAll, push, amend }),
   listPrs: (repo: string) => call<PullRequest[]>("list_prs", { repo }),
   preparePr: (repo: string, pr: PullRequest) => call<RevFiles>("prepare_pr", { repo, pr }),
   listTasks: (repo: string) => call<Task[]>("list_tasks", { repo }),
@@ -164,6 +171,38 @@ export async function copyText(text: string): Promise<void> {
   } else {
     await navigator.clipboard.writeText(text);
   }
+}
+
+/** Tern's version, from the app itself (the browser preview reports "dev"). */
+export async function appVersion(): Promise<string> {
+  if (!inTauri) return "dev";
+  const { getVersion } = await import("@tauri-apps/api/app");
+  return getVersion();
+}
+
+export type UpdateInfo = { version: string; notes: string; date: string | null; install: (onProgress: (done: number, total: number | null) => void) => Promise<void> };
+
+/** Asks GitHub Releases for a newer signed version. Null when Tern is up to date. */
+export async function findUpdate(): Promise<UpdateInfo | null> {
+  if (!inTauri) return null;
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const u = await check();
+  if (!u) return null;
+  return {
+    version: u.version,
+    notes: u.body ?? "",
+    date: u.date ?? null,
+    install: async (onProgress) => {
+      let total: number | null = null;
+      let done = 0;
+      await u.downloadAndInstall((e) => {
+        if (e.event === "Started") total = e.data.contentLength ?? null;
+        else if (e.event === "Progress") onProgress((done += e.data.chunkLength), total);
+      });
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    },
+  };
 }
 
 export async function readClipboard(): Promise<string> {

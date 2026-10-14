@@ -3,6 +3,7 @@ mod ci;
 mod clone;
 mod config;
 mod git;
+mod hunks;
 mod issues;
 mod prs;
 mod pty;
@@ -315,6 +316,26 @@ async fn unstage(repo: String, paths: Vec<String>) -> Res<()> {
 }
 
 #[tauri::command]
+async fn file_hunks(repo: String, rel: String) -> Res<hunks::FileHunks> {
+    blocking(move || hunks::file_hunks(&repo, &rel)).await
+}
+
+#[tauri::command]
+async fn apply_hunk(repo: String, patch: String, mode: String) -> Res<String> {
+    blocking(move || hunks::apply(&repo, &patch, &mode)).await
+}
+
+#[tauri::command]
+async fn pr_draft(repo: String) -> Res<prs::PrDraft> {
+    blocking(move || prs::draft(&repo)).await
+}
+
+#[tauri::command]
+async fn pr_create(repo: String, title: String, body: String, base: String, draft: bool) -> Res<String> {
+    blocking(move || prs::create(&repo, &title, &body, &base, draft)).await
+}
+
+#[tauri::command]
 async fn stash_list(repo: String) -> Res<Vec<stash::Stash>> {
     blocking(move || stash::list(&repo)).await
 }
@@ -355,8 +376,8 @@ async fn undo_commit(repo: String) -> Res<String> {
 }
 
 #[tauri::command]
-async fn commit(repo: String, message: String, stage_all: bool, push: bool) -> Res<String> {
-    blocking(move || git::commit(&repo, &message, stage_all, push)).await
+async fn commit(repo: String, message: String, stage_all: bool, push: bool, amend: Option<bool>) -> Res<String> {
+    blocking(move || git::commit(&repo, &message, stage_all, push, amend.unwrap_or(false))).await
 }
 
 #[tauri::command]
@@ -624,6 +645,8 @@ pub fn run() {
             hand_over(app, file_args(argv.into_iter().skip(1), Path::new(&cwd)));
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
@@ -661,6 +684,10 @@ pub fn run() {
             stage,
             unstage,
             commit,
+            file_hunks,
+            apply_hunk,
+            pr_draft,
+            pr_create,
             stash_list,
             stash_push,
             stash_apply,

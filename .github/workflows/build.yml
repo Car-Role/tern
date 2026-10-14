@@ -76,6 +76,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update files, so Tern only installs updates that come from this repo.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
@@ -92,6 +95,8 @@ jobs:
             | Linux x64 | `.AppImage`, `.deb` (Debian, Ubuntu), or `.rpm` (Fedora) with `amd64` / `x86_64` |
             | Linux ARM64 | `.AppImage`, `.deb`, or `.rpm` with `arm64` / `aarch64` |
           releaseDraft: true
+          # latest.json tells installed copies of Tern that a new version exists.
+          includeUpdaterJson: true
 
       - uses: actions/upload-artifact@v4
         with:

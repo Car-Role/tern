@@ -1,6 +1,6 @@
 // All app state and actions. Components read from `app` and call its methods.
 
-import { api, copyText, onTaskEvents, openUrl, onOpenFiles } from "./api";
+import { api, appVersion, copyText, findUpdate, onTaskEvents, openUrl, onOpenFiles, type UpdateInfo } from "./api";
 import { formatPaths, type CopyFormat, type LineRange, ago, baseName, duration } from "./format";
 import { Term } from "./term";
 import { closeShell, disposeRun, feedRun, focusShell, isInsideTerminal, openShell, retheme, runText, writeToShell } from "./shells";
@@ -23,6 +23,9 @@ import type {
   RunInfo,
   CiRun,
   Stash,
+  Hunk,
+  FileHunks,
+  PrDraft,
   History,
   Ticket,
   TicketDetail,
@@ -82,7 +85,7 @@ export type View =
   | { kind: "issue"; repo: string; number: number; rel: "" }
   | { kind: "run"; repo: string; run: CiRun; rel: "" };
 
-export type Overlay = null | "palette" | "copy" | "help" | "settings" | "spaces" | "move" | "confirm" | "clone" | "branches" | "search";
+export type Overlay = null | "palette" | "copy" | "help" | "settings" | "spaces" | "move" | "confirm" | "clone" | "branches" | "search" | "newpr";
 
 /** What the confirm dialog shows. `resolve` is called once with the answer. */
 export type ConfirmRequest = {
@@ -191,6 +194,21 @@ class Store {
   /** Stashes per repo, and the branch-files stamp they were read at. */
   stashes = $state<Record<string, Stash[]>>({});
   private stashStamp: Record<string, number | null | undefined> = {};
+  version = $state("");
+  /** The hunk panel beside a working-tree diff. */
+  hunksOpen = $state(saved("hunks") === "1");
+  hunks = $state<{ repo: string; rel: string; loading: boolean; error: string | null; untracked: boolean; data: FileHunks | null } | null>(null);
+  hunkBusy = $state<string | null>(null);
+  /** Asks the diff view to scroll to a line of the new file. */
+  diffJump = $state<{ line: number; at: number } | null>(null);
+  /** Amend the last commit instead of making a new one, per repo. */
+  amend = $state<Record<string, boolean>>({});
+  /** The new pull request dialog. */
+  prDraft = $state<{ loading: boolean; error: string | null; data: PrDraft | null } | null>(null);
+  prCreating = $state(false);
+  /** A newer version found on GitHub, and how its install is going. */
+  update = $state<{ info: UpdateInfo; state: "ready" | "downloading" | "failed"; progress: number } | null>(null);
+  updateCheck = $state<{ state: "idle" | "checking" | "current" | "failed"; at: number; error?: string }>({ state: "idle", at: 0 });
   /** The last discard, so it can be undone for a few minutes. */
   lastDiscard = $state<{ repo: string; backup: string; tracked: string[]; untracked: number; count: number; at: number } | null>(null);
   issueState = $state<"open" | "closed" | "all">((saved("issueState") as "open" | "closed" | "all") || "open");
@@ -401,6 +419,12 @@ class Store {
     await this.connectTasks();
     // Ticket counts load in the background once the repos (and their remotes) are known.
     setTimeout(() => this.loadTickets(), 4000);
+    appVersion().then((v) => (this.version = v)).catch(() => {});
+    // Look for a new version a little after start, then every 6 hours. Development builds only check by hand.
+    if (!import.meta.env.DEV) {
+      setTimeout(() => this.checkForUpdate(false), 20_000);
+      setInterval(() => this.checkForUpdate(false), 6 * 3600_000);
+    }
     onOpenFiles(() => this.openWaiting());
     await this.openWaiting();
   }
@@ -1970,6 +1994,153 @@ class Store {
     await this.refresh([repo]);
   }
 
+  // Hunks
+
+  toggleHunks(on = !this.hunksOpen) {
+    this.hunksOpen = on;
+    save("hunks", on ? "1" : "0");
+    if (!on) this.hunks = null;
+  }
+
+  /** Reads the hunks of the file in the diff view. Only working-tree diffs have hunks to stage. */
+  async loadHunks(repo: string, rel: string, untracked: boolean) {
+    const same = this.hunks?.repo === repo && this.hunks.rel === rel;
+    this.hunks = { repo, rel, loading: !same || !this.hunks?.data, error: null, untracked, data: same ? (this.hunks?.data ?? null) : null };
+    if (untracked) return void (this.hunks = { ...this.hunks, loading: false });
+    try {
+      const data = await api.fileHunks(repo, rel);
+      if (this.hunks?.repo === repo && this.hunks.rel === rel) this.hunks = { ...this.hunks, loading: false, data };
+    } catch (e) {
+      if (this.hunks?.repo === repo && this.hunks.rel === rel) this.hunks = { ...this.hunks, loading: false, error: firstLine(String(e)) };
+    }
+  }
+
+  async applyHunk(h: Hunk, mode: "stage" | "unstage" | "discard") {
+    const cur = this.hunks;
+    if (!cur || this.hunkBusy) return;
+    if (mode === "discard") {
+      const ok = await this.ask({
+        title: `Discard this change in ${baseName(cur.rel)}?`,
+        body: `${h.added} added and ${h.removed} removed ${h.added + h.removed === 1 ? "line goes" : "lines go"} back to how the last commit has them. The rest of the file stays as it is. You can undo this from the status bar for a few minutes.`,
+        confirm: "Discard change",
+      });
+      if (!ok) return;
+    }
+    this.hunkBusy = h.patch;
+    try {
+      const backup = await api.applyHunk(cur.repo, h.patch, mode);
+      if (mode === "discard") {
+        this.lastDiscard = { repo: cur.repo, backup, tracked: [cur.rel], untracked: 0, count: 1, at: Date.now() };
+        this.notify(`Discarded a change in ${baseName(cur.rel)}`, "ok");
+      }
+    } catch (e) {
+      this.notify(firstLine(String(e)), "err");
+    } finally {
+      this.hunkBusy = null;
+    }
+    await this.refresh([cur.repo]);
+    this.stamp++;
+    await this.loadHunks(cur.repo, cur.rel, cur.untracked);
+  }
+
+  jumpToLine(line: number) {
+    this.diffJump = { line, at: Date.now() };
+  }
+
+  // Amend
+
+  /** True when the last commit can be amended: there is one, and it is not pushed. */
+  canAmend(repo: string) {
+    const s = this.sums[repo];
+    return !!s?.last && (!s.upstream || s.ahead > 0);
+  }
+
+  setAmend(repo: string, on: boolean) {
+    this.amend = { ...this.amend, [repo]: on };
+    const last = this.sums[repo]?.last;
+    const msg = (this.commitMsg[repo] ?? "").trim();
+    if (on && last && !msg) this.commitMsg = { ...this.commitMsg, [repo]: last.body ? `${last.subject}\n\n${last.body}` : last.subject };
+    if (!on && last && msg === (last.body ? `${last.subject}\n\n${last.body}` : last.subject).trim()) this.commitMsg = { ...this.commitMsg, [repo]: "" };
+  }
+
+  // New pull request
+
+  async openNewPr() {
+    const repo = this.current;
+    if (!repo) return this.notify("Open a project first.", "info");
+    this.prDraft = { loading: true, error: null, data: null };
+    this.overlay = "newpr";
+    try {
+      this.prDraft = { loading: false, error: null, data: await api.prDraft(repo) };
+    } catch (e) {
+      this.prDraft = { loading: false, error: firstLine(String(e)), data: null };
+    }
+  }
+
+  async createPr(title: string, body: string, base: string, draft: boolean) {
+    const repo = this.current;
+    if (!repo || this.prCreating) return;
+    this.prCreating = true;
+    try {
+      const url = await api.prCreate(repo, title, body, base, draft);
+      this.overlay = null;
+      this.notify(`Opened the pull request: ${url}`, "ok");
+      if (url) openUrl(url);
+      this.loadPrs(repo, true);
+    } catch (e) {
+      this.notify(`Could not create the pull request: ${firstLine(String(e))}`, "err");
+    } finally {
+      this.prCreating = false;
+      await this.refresh([repo]);
+    }
+  }
+
+  // Updates
+
+  /** Asks GitHub Releases for a newer version. Quiet unless `manual`. */
+  async checkForUpdate(manual = true) {
+    if (this.updateCheck.state === "checking" || this.update?.state === "downloading") return;
+    this.updateCheck = { state: "checking", at: Date.now() };
+    try {
+      const info = await findUpdate();
+      if (info) {
+        this.update = { info, state: "ready", progress: 0 };
+        this.updateCheck = { state: "idle", at: Date.now() };
+        if (manual) this.notify(`Tern ${info.version} is available.`, "ok");
+      } else {
+        this.updateCheck = { state: "current", at: Date.now() };
+        if (manual) this.notify(`Tern ${this.version} is the newest version.`, "ok");
+      }
+    } catch (e) {
+      this.updateCheck = { state: "failed", at: Date.now(), error: firstLine(String(e)) };
+      if (manual) this.notify(`Could not check for updates: ${firstLine(String(e))}`, "err");
+    }
+  }
+
+  /** Downloads and installs the update, then restarts Tern. Running tasks and terminals stop. */
+  async installUpdate() {
+    const u = this.update;
+    if (!u || u.state === "downloading") return;
+    const running = this.runs.filter((r) => r.running).length + this.shells.filter((s) => s.alive).length;
+    if (running) {
+      const ok = await this.ask({
+        title: `Update to Tern ${u.info.version} now?`,
+        body: `Tern restarts to finish the update. ${running} running ${running === 1 ? "task or terminal stops" : "tasks and terminals stop"}.`,
+        confirm: "Update and restart",
+      });
+      if (!ok) return;
+    }
+    this.update = { ...u, state: "downloading", progress: 0 };
+    try {
+      await u.info.install((done, total) => {
+        if (this.update) this.update = { ...this.update, progress: total ? Math.min(1, done / total) : 0 };
+      });
+    } catch (e) {
+      this.update = { ...u, state: "failed", progress: 0 };
+      this.notify(`The update failed: ${firstLine(String(e))}`, "err");
+    }
+  }
+
   // Stashes and discarding
 
   async loadStashes(repo: string) {
@@ -2152,11 +2323,13 @@ class Store {
       this.notify("Write a commit message first.", "info");
       return false;
     }
-    if (!s.changes.length) {
+    const amend = !!this.amend[repo] && this.canAmend(repo);
+    if (!s.changes.length && !amend) {
       this.notify("There is nothing to commit.", "info");
       return false;
     }
-    const stageAll = !s.changes.some((c) => c.staged);
+    // Amending with nothing staged changes only the message; it does not sweep in every change.
+    const stageAll = !amend && !s.changes.some((c) => c.staged);
     if (push) {
       const files = stageAll ? s.changes.length : s.changes.filter((c) => c.staged).length;
       const warnings = [...this.mainWarning(s.branch)];
@@ -2171,10 +2344,11 @@ class Store {
     }
     this.committing = true;
     try {
-      const out = await api.commit(repo, message, stageAll, push);
+      const out = await api.commit(repo, message, stageAll, push, amend);
       this.commitMsg = { ...this.commitMsg, [repo]: "" };
+      this.amend = { ...this.amend, [repo]: false };
       const head = out.split("\n").find((l) => l.startsWith("[")) ?? firstLine(out);
-      this.notify(`${push ? "Committed and pushed" : "Committed"}: ${head}`, "ok");
+      this.notify(`${amend ? "Amended" : push ? "Committed and pushed" : "Committed"}: ${head}`, "ok");
       const { [repo]: _, ...logs } = this.logs;
       this.logs = logs;
       this.view = null;

@@ -9,6 +9,7 @@
   import Rail from "./components/Rail.svelte";
   import TitleBar from "./components/TitleBar.svelte";
   import Tickets from "./components/Tickets.svelte";
+  import PrCreate from "./components/PrCreate.svelte";
   import ListPane from "./components/ListPane.svelte";
   import Viewer from "./components/Viewer.svelte";
   import Overview from "./components/Overview.svelte";
@@ -149,6 +150,7 @@
 {#if app.overlay === "clone"}<CloneDialog />{/if}
 {#if app.overlay === "branches"}<BranchPicker />{/if}
 {#if app.overlay === "search"}<Search />{/if}
+{#if app.overlay === "newpr"}<PrCreate />{/if}
 <HoverCard />
 
 <style>

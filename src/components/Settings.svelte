@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { app } from "../lib/store.svelte";
-  import { api } from "../lib/api";
+  import { api, openUrl } from "../lib/api";
   import type { Config, TabId } from "../lib/types";
   import { ALL_TABS } from "../lib/store.svelte";
   import { THEMES } from "../lib/themes";
@@ -234,6 +234,38 @@
         {/each}
       </section>
     {/if}
+
+    <section class="about">
+      <div class="aboutrow">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M3.5 9.5c3 0 5.5 1.5 8.5 5 3-3.5 5.5-5 8.5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </span>
+        <div class="aboutname">
+          <b>Tern {app.version}</b>
+          <span class="faint">
+            {#if app.update}Version {app.update.info.version} is available.
+            {:else if app.updateCheck.state === "checking"}Checking for updates…
+            {:else if app.updateCheck.state === "current"}Up to date.
+            {:else if app.updateCheck.state === "failed"}Could not check: {app.updateCheck.error}
+            {:else}Source-available under the Business Source License 1.1.{/if}
+          </span>
+        </div>
+        {#if app.update}
+          <button class="btn primary" onclick={() => app.installUpdate()} disabled={app.update.state === "downloading"}>
+            {app.update.state === "downloading" ? `Updating… ${Math.round(app.update.progress * 100)}%` : `Update to ${app.update.info.version}`}
+          </button>
+        {:else}
+          <button class="btn" onclick={() => app.checkForUpdate(true)} disabled={app.updateCheck.state === "checking"}>Check for updates</button>
+        {/if}
+      </div>
+      <p class="links">
+        <button class="link" onclick={() => openUrl("https://car-role.github.io/tern/")}>Website</button>
+        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/releases")}>What's new</button>
+        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/docs/guide.md")}>Guide</button>
+        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/issues/new")}>Report a problem</button>
+        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/LICENSE")}>License</button>
+      </p>
+    </section>
 
     <section class="nums">
       <label>Scan depth <input type="number" min="1" max="8" bind:value={draft.scanDepth} /></label>
@@ -530,6 +562,50 @@
   .nums input {
     width: 64px;
     margin: 0 6px;
+  }
+  .about {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .aboutrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: var(--text);
+    color: var(--panel);
+    flex-shrink: 0;
+  }
+  .aboutname {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    font-size: 12.5px;
+  }
+  .aboutname b {
+    font-size: 13.5px;
+  }
+  .links .link {
+    color: var(--blue);
+    font-size: 12px;
+  }
+  .links .link:hover {
+    text-decoration: underline;
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 0;
+    font-size: 12px;
   }
   footer {
     display: flex;

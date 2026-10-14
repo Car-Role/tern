@@ -25,6 +25,28 @@ export type Change = {
   revHead?: string;
 };
 
+export type Hunk = {
+  header: string;
+  newStart: number;
+  added: number;
+  removed: number;
+  lines: string[];
+  /** A patch with only this hunk, for git apply. */
+  patch: string;
+};
+
+export type FileHunks = { unstaged: Hunk[]; staged: Hunk[]; binary: boolean };
+
+export type PrDraft = {
+  provider: "github" | "azdo";
+  branch: string;
+  bases: string[];
+  title: string;
+  body: string;
+  commits: string[];
+  pushed: boolean;
+};
+
 export type Stash = {
   /** stash@{0} and so on. It changes as stashes come and go, so actions use `sha`. */
   name: string;

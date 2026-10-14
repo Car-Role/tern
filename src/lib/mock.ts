@@ -90,10 +90,10 @@ let changes: Change[] = [
 
 const shaOf = (i: number) => (((i + 1) * 2654435761) >>> 0).toString(16).padStart(8, "0").repeat(5).slice(0, 40);
 
-function commit(i: number, subject: string, parents: number[] = [i + 1], refs = "", author = "Carl Miller"): Commit {
+function commit(i: number, subject: string, parents: number[] = [i + 1], refs = "", author = "Ada Park"): Commit {
   const sha = shaOf(i);
   return {
-    sha, short: sha.slice(0, 7), subject, author, email: "carl@example.com", time: now - i * 5400, refs,
+    sha, short: sha.slice(0, 7), subject, author, email: "ada@example.com", time: now - i * 5400, refs,
     parents: parents.filter((p) => p < 12).map(shaOf),
     body: i % 3 === 0 ? "Longer explanation of the change.\n\nRefs #142." : "",
   };
@@ -176,7 +176,7 @@ export function hasScope(s: Session, scope: string): boolean {
 
 const prs: PullRequest[] = [
   {
-    id: 142, title: "Retry session fetches with backoff", author: "carl", source: "feat/retry", target: "main",
+    id: 142, title: "Retry session fetches with backoff", author: "ada", source: "feat/retry", target: "main",
     url: "https://github.com", draft: false, updated: new Date().toISOString(), headSha: "abc", review: "waiting", provider: "github",
   },
   {
@@ -232,7 +232,7 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
       const up = Array.from({ length: 15 }, (_, i) => {
         const sha = shaOf(100 + i);
         return {
-          sha, short: sha.slice(0, 7), subject: `Remote work ${15 - i}`, author: i % 2 ? "Sam Lee" : "Carl Miller", email: "o@example.com",
+          sha, short: sha.slice(0, 7), subject: `Remote work ${15 - i}`, author: i % 2 ? "Sam Lee" : "Ada Park", email: "o@example.com",
           time: now + (15 - i) * 600, refs: i === 0 ? "origin/main, origin/HEAD" : "", parents: [i < 14 ? shaOf(101 + i) : commits[0].sha], body: "",
         };
       });
@@ -249,7 +249,7 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     case "pending": return args.incoming ? commits.slice(0, 3) : commits.slice(0, 2);
     case "list_issues": return [
       { number: 87, title: "Search results lose their highlight after sorting", author: "jt", state: "open", labels: [{ name: "bug", color: "d73a4a" }], assignees: [], comments: 1, updated: new Date().toISOString(), created: new Date().toISOString(), url: "https://github.com" },
-      { number: 73, title: "Draft is lost when clicking back", author: "claudio", state: "open", labels: [{ name: "enhancement", color: "a2eeef" }, { name: "ui", color: "5319e7" }], assignees: ["carl"], comments: 0, updated: new Date(Date.now() - 86400e3 * 20).toISOString(), created: new Date().toISOString(), url: "https://github.com" },
+      { number: 73, title: "Draft is lost when clicking back", author: "claudio", state: "open", labels: [{ name: "enhancement", color: "a2eeef" }, { name: "ui", color: "5319e7" }], assignees: ["ada"], comments: 0, updated: new Date(Date.now() - 86400e3 * 20).toISOString(), created: new Date().toISOString(), url: "https://github.com" },
     ];
     case "issue_detail": return {
       issue: { number: args.number, title: "Search results lose their highlight after sorting", author: "jt", state: "open", labels: [{ name: "bug", color: "d73a4a" }], assignees: [], comments: 1, updated: new Date().toISOString(), created: new Date().toISOString(), url: "https://github.com" },
@@ -309,7 +309,7 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
         project: "notes-app", area: "", iteration: "", priority: null, tags: ["bug"], changed: new Date(Date.now() - 86400000).toISOString(), url: "https://github.com" },
     ];
     case "ticket_azdo_detail": return {
-      markdown: false, createdBy: "Sam Lee", created: new Date(Date.now() - 5 * 86400000).toISOString(), assignedTo: "Carl Miller",
+      markdown: false, createdBy: "Sam Lee", created: new Date(Date.now() - 5 * 86400000).toISOString(), assignedTo: "Ada Park",
       sections: [
         { title: "Description", body: "<div>After a failed sign-in, the password field loses focus on <b>mobile</b>.</div>", markdown: false },
         { title: "Repro steps", body: "<ol><li>Open the sign-in page on a phone</li><li>Enter a wrong password</li><li>See that the field loses focus</li></ol><img src=\"https://dev.azure.com/acme/x/_apis/wit/attachments/1?fileName=sign-in.png\" alt=\"sign-in.png\">", markdown: false },
@@ -325,8 +325,8 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     case "ci_runs": {
       const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
       return [
-        { id: 3, name: "catalog-api", number: "2026.10.2.3", title: "Retry fetches with backoff", status: "running", result: "", branch: "main", sha: "9e3779b", by: "Carl Miller", started: ago(2), finished: "", url: "https://dev.azure.com", provider: "azdo" },
-        { id: 2, name: "catalog-api", number: "2026.10.2.2", title: "Fix table sort", status: "completed", result: "partial", branch: "main", sha: "3c6ef36", by: "Carl Miller", started: ago(90), finished: ago(84), url: "https://dev.azure.com", provider: "azdo" },
+        { id: 3, name: "catalog-api", number: "2026.10.2.3", title: "Retry fetches with backoff", status: "running", result: "", branch: "main", sha: "9e3779b", by: "Ada Park", started: ago(2), finished: "", url: "https://dev.azure.com", provider: "azdo" },
+        { id: 2, name: "catalog-api", number: "2026.10.2.2", title: "Fix table sort", status: "completed", result: "partial", branch: "main", sha: "3c6ef36", by: "Ada Park", started: ago(90), finished: ago(84), url: "https://dev.azure.com", provider: "azdo" },
         { id: 1, name: "catalog-api", number: "2026.10.1.9", title: "Add Grid component", status: "completed", result: "failed", branch: "feat/grid", sha: "78dde6c", by: "Sam Lee", started: ago(600), finished: ago(593), url: "https://dev.azure.com", provider: "azdo" },
       ];
     }
@@ -339,10 +339,10 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     case "list_branches": return {
       base: "origin/main",
       branches: [
-        { name: "main", remote: false, upstream: "origin/main", ahead: 0, behind: 2, gone: false, sha: "9e3779b", time: now - 300, author: "Carl Miller", subject: "Merge branch 'feat/retry'", current: true, worktree: null, merged: false },
-        { name: "claude/fix-sync", remote: false, upstream: null, ahead: 0, behind: 0, gone: false, sha: "3c6ef36", time: now - 3600, author: "Claude", subject: "Fix sync retry timing", current: false, worktree: "C:\\Users\\Carl\\Coding projects\\notes-app\\.claude\\worktrees\\fix-sync", merged: false },
-        { name: "feat/retry", remote: false, upstream: "origin/feat/retry", ahead: 0, behind: 0, gone: false, sha: "daa66d1", time: now - 10800, author: "Carl Miller", subject: "Retry fetches with backoff", current: false, worktree: null, merged: true },
-        { name: "old/spike", remote: false, upstream: "origin/old/spike", ahead: 0, behind: 0, gone: true, sha: "13c6ef3", time: now - 86400 * 40, author: "Carl Miller", subject: "Try a grid layout", current: false, worktree: null, merged: false },
+        { name: "main", remote: false, upstream: "origin/main", ahead: 0, behind: 2, gone: false, sha: "9e3779b", time: now - 300, author: "Ada Park", subject: "Merge branch 'feat/retry'", current: true, worktree: null, merged: false },
+        { name: "claude/fix-sync", remote: false, upstream: null, ahead: 0, behind: 0, gone: false, sha: "3c6ef36", time: now - 3600, author: "Claude", subject: "Fix sync retry timing", current: false, worktree: "C:\\Users\\you\\Code\\notes-app\\.claude\\worktrees\\fix-sync", merged: false },
+        { name: "feat/retry", remote: false, upstream: "origin/feat/retry", ahead: 0, behind: 0, gone: false, sha: "daa66d1", time: now - 10800, author: "Ada Park", subject: "Retry fetches with backoff", current: false, worktree: null, merged: true },
+        { name: "old/spike", remote: false, upstream: "origin/old/spike", ahead: 0, behind: 0, gone: true, sha: "13c6ef3", time: now - 86400 * 40, author: "Ada Park", subject: "Try a grid layout", current: false, worktree: null, merged: false },
         { name: "origin/main", remote: true, upstream: null, ahead: 0, behind: 0, gone: false, sha: "1a2b3c4", time: now - 200, author: "Dana", subject: "Bump version", current: false, worktree: null, merged: false },
         { name: "origin/feat/export", remote: true, upstream: null, ahead: 0, behind: 0, gone: false, sha: "5d6e7f8", time: now - 7200, author: "Dana", subject: "Export to CSV", current: false, worktree: null, merged: false },
       ],
@@ -357,6 +357,18 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     };
     case "base_diff": return { old: text(oldText), new: text(newText) };
     case "base_patch": return "diff --git a/src/app/session.ts b/src/app/session.ts\n+retry\n";
+    case "file_hunks": return {
+      binary: false,
+      unstaged: [
+        { header: "@@ -1,3 +1,4 @@", newStart: 1, added: 1, removed: 0, lines: [' import { fetcher } from "../lib/fetcher";', '+import { retry } from "../lib/retry";', "", " export type Session = { user: string };"], patch: "p1" },
+        { header: "@@ -9,4 +10,8 @@ export function isExpired", newStart: 10, added: 4, removed: 1, lines: [" export function isExpired(s: Session): boolean {", "-  return s.expires < Date.now();", "+  return s.expires < now;", "+}", "+", "+export function hasScope(s: Session, scope: string) {", "   return s.scopes.includes(scope);"], patch: "p2" },
+      ],
+      staged: [{ header: "@@ -5,3 +6,3 @@ export async function loadSession", newStart: 6, added: 1, removed: 1, lines: [" export async function loadSession() {", '-  const res = await fetcher("/api/session");', '+  const res = await retry(() => fetcher("/api/session"));', "   if (!res.ok) return null;"], patch: "p3" }],
+    };
+    case "apply_hunk": return args.mode === "discard" ? shaOf(51) : "";
+    case "pr_draft": return { provider: "github", branch: "feat/retry", bases: ["main", "develop"], title: "Retry session fetches with backoff",
+      body: "- Add a retry helper\n- Retry session fetches with backoff", commits: ["Retry session fetches with backoff", "Add a retry helper"], pushed: false };
+    case "pr_create": await wait(700); return "https://github.com/Car-Role/x/pull/143";
     case "stash_list": return [
       { name: "stash@{0}", sha: shaOf(40), message: "Half-done retry settings", branch: "main", time: now - 5400, files: 2, untracked: ["src/lib/retry.config.ts"] },
       { name: "stash@{1}", sha: shaOf(41), message: "WIP before switching to feat/retry", branch: "feat/retry", time: now - 86400 * 2, files: 1, untracked: [] },

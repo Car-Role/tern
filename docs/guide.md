@@ -30,6 +30,19 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
 - Stashes show at the bottom of the Changes tab, with their branch, file count, and age. Enter shows what a
   stash holds as a review, new files included. **Pop** puts it back and removes it; right-click to apply it
   and keep it, copy its name, or drop it.
+- Stage by hunk: in a diff of your local changes, **Hunks** (or `Ctrl Shift H`) opens a panel with each block of
+  changes. **Stage** or **Discard** a block that is not staged yet, or **Unstage** a staged one. Click a block's line
+  number to scroll the diff there. Discarding a block asks first and can be undone from the status bar.
+- Amend: when the last commit is not pushed, the commit box has an **Amend** box. It puts the last message back in
+  the box; the button then adds the staged changes to that commit and replaces its message. With nothing staged, it
+  changes only the message.
+- Create a pull request: **Create one** on the empty PRs tab, or "Create a pull request" in `Ctrl Shift P`. Pick the
+  branch to merge into, edit the title and description (filled in from your commits), and choose a draft if you like.
+  Tern pushes the branch first when the remote does not have all of it. Works with GitHub (`gh`) and Azure DevOps (`az`).
+- Updates: Tern checks GitHub Releases a little after it starts and every 6 hours. When a new version is out, the status
+  bar shows **Restart to update**. Settings shows your version, with **Check for updates** and links to the release notes.
+  Updates are signed, and Tern only installs ones signed by this project. (Linux: the AppImage updates itself; for
+  .deb and .rpm, install the new file.)
 - Undo the last commit (right-click it in History, or "Undo the last commit" in `Ctrl Shift P`) when it is
   not pushed yet. Its changes come back staged and its message goes back in the commit box.
 - Pull and push always ask first. The dialog lists the commits that come in or go out, and warns about

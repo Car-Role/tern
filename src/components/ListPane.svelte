@@ -729,7 +729,10 @@
           <button class="link" onclick={() => app.loadPrs(repo, true)}>Try again</button>
         </div>
       {:else if pr && !pr.items.length}
-        <p class="empty">No open pull requests.</p>
+        <div class="empty">
+          <p>No open pull requests.</p>
+          <button class="link" onclick={() => app.openNewPr()}>Create one for {s?.branch ?? "this branch"}</button>
+        </div>
       {/if}
     {:else if app.tab === "history" && !reviewing && !app.logs[repo]}
       <p class="empty">Reading history…</p>
@@ -964,7 +967,7 @@
     {/each}
   </div>
 
-  {#if app.tab === "changes" && !reviewing && s?.changes.length}
+  {#if app.tab === "changes" && !reviewing && s && (s.changes.length || app.canAmend(repo))}
     {@const stagedN = s.changes.filter((c) => c.staged).length}
     <div class="commit">
       <textarea
@@ -981,9 +984,17 @@
           <input type="checkbox" checked={app.pushAfterCommit} onchange={(e) => app.setPushAfterCommit(e.currentTarget.checked)} />
           Push after
         </label>
-        <span class="faint keys"><kbd>Ctrl Enter</kbd></span>
-        <button class="cbtn" disabled={app.committing || !(app.commitMsg[repo] ?? "").trim()} onclick={() => app.commit()}>
-          {#if app.committing}Committing…{:else}
+        {#if app.canAmend(repo)}
+          <label class="push" use:hover={() => ({ title: "Amend the last commit", text: "Add the staged changes to the last commit and replace its message, instead of making a new commit. Only for a commit that is not pushed." })}>
+            <input type="checkbox" checked={!!app.amend[repo]} onchange={(e) => app.setAmend(repo, e.currentTarget.checked)} />
+            Amend
+          </label>
+        {/if}
+        {#if !app.canAmend(repo)}<span class="faint keys"><kbd>Ctrl Enter</kbd></span>{/if}
+        <button class="cbtn" disabled={app.committing || !(app.commitMsg[repo] ?? "").trim() || (!s.changes.length && !app.amend[repo])} onclick={() => app.commit()}>
+          {#if app.committing}Committing…{:else if app.amend[repo]}
+            {stagedN ? `Amend with ${stagedN} staged` : "Amend the message"}{app.pushAfterCommit ? " and push" : ""}
+          {:else}
             {stagedN ? `Commit ${stagedN} staged` : `Commit all ${s.changes.length}`}{app.pushAfterCommit ? " and push" : ""}
           {/if}
         </button>

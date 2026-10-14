@@ -224,6 +224,124 @@ pub fn prepare(repo: &str, pr: &PullRequest) -> Result<PrDiff, String> {
     Ok(PrDiff { base, head, files })
 }
 
+// Creating a pull request
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PrDraft {
+    pub provider: String,
+    pub branch: String,
+    /// Branches on the remote that the pull request can go into, the default one first.
+    pub bases: Vec<String>,
+    pub title: String,
+    pub body: String,
+    /// The commits the pull request would hold, newest first (subjects only, up to 30).
+    pub commits: Vec<String>,
+    /// False when the branch must be pushed first (no remote branch yet, or new commits).
+    pub pushed: bool,
+}
+
+/// "feat/retry-sessions" -> "Retry sessions"
+fn title_from_branch(branch: &str) -> String {
+    let last = branch.rsplit('/').next().unwrap_or(branch);
+    let words = last.replace(['-', '_'], " ");
+    let mut c = words.trim().chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => branch.to_string(),
+    }
+}
+
+/// What a new pull request for the current branch would look like.
+pub fn draft(repo: &str) -> Result<PrDraft, String> {
+    let s = git::summary(repo);
+    if s.remote.is_none() {
+        return Err("This repo has no remote, so there is nowhere to open a pull request.".into());
+    }
+    if s.provider != "github" && s.provider != "azdo" {
+        return Err("Pull requests work for GitHub and Azure DevOps remotes only.".into());
+    }
+    let branch = s.branch.clone().ok_or("Switch to a branch first (HEAD is detached).")?;
+    let remote = remote_name(repo);
+    let listed = run::git(Path::new(repo), &["branch", "-r", "--format=%(refname:short)"]).unwrap_or_default();
+    let prefix = format!("{remote}/");
+    let mut bases: Vec<String> = listed
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix(&prefix))
+        .filter(|b| *b != "HEAD" && *b != branch)
+        .map(String::from)
+        .collect();
+    // The remote's default branch first, then the usual names.
+    let default = run::git(Path::new(repo), &["symbolic-ref", "--quiet", &format!("refs/remotes/{remote}/HEAD")])
+        .ok()
+        .and_then(|h| h.trim().rsplit('/').next().map(String::from));
+    for b in default.iter().cloned().chain(["main", "master", "develop"].map(String::from)).rev() {
+        if let Some(i) = bases.iter().position(|x| *x == b) {
+            let x = bases.remove(i);
+            bases.insert(0, x);
+        }
+    }
+    if bases.is_empty() {
+        return Err(format!("{remote} has no other branch to open a pull request into. Fetch first?"));
+    }
+    if bases[0] == branch {
+        return Err(format!("You are on {branch}. Switch to the branch with your work first."));
+    }
+    let range = format!("{remote}/{}..HEAD", bases[0]);
+    let commits: Vec<String> = run::git(Path::new(repo), &["log", "-n", "30", "--format=%s", &range])
+        .map(|t| t.lines().map(String::from).collect())
+        .unwrap_or_default();
+    let title = if commits.len() == 1 { commits[0].clone() } else { title_from_branch(&branch) };
+    let body = if commits.len() > 1 { commits.iter().rev().map(|c| format!("- {c}")).collect::<Vec<_>>().join("\n") } else { String::new() };
+    let pushed = s.upstream.is_some() && s.ahead == 0;
+    Ok(PrDraft { provider: s.provider, branch, bases, title, body, commits, pushed })
+}
+
+/// Pushes the branch when needed, then opens the pull request. Returns its web address.
+pub fn create(repo: &str, title: &str, body: &str, base: &str, draft: bool) -> Result<String, String> {
+    if title.trim().is_empty() {
+        return Err("Give the pull request a title.".into());
+    }
+    let s = git::summary(repo);
+    let branch = s.branch.clone().ok_or("Switch to a branch first (HEAD is detached).")?;
+    if s.upstream.is_none() || s.ahead > 0 {
+        git::action(repo, "push").map_err(|e| format!("The push failed, so no pull request was made: {e}"))?;
+    }
+    let remote = s.remote.ok_or("this repo has no remote")?;
+    match s.provider.as_str() {
+        "github" => {
+            let mut args = vec!["pr", "create", "--title", title.trim(), "--body", body, "--base", base, "--head", &branch];
+            if draft {
+                args.push("--draft");
+            }
+            let out = run::tool("gh", Path::new(repo), &args)?;
+            Ok(out.lines().rev().find(|l| l.starts_with("http")).unwrap_or("").trim().to_string())
+        }
+        "azdo" => {
+            let r = parse_azdo(&remote).ok_or_else(|| format!("could not read the Azure DevOps project from {remote}"))?;
+            let org_url = format!("https://dev.azure.com/{}", r.org);
+            let mut args: Vec<&str> = vec![
+                "repos", "pr", "create", "--org", &org_url, "--project", &r.project, "--repository", &r.repo,
+                "--source-branch", &branch, "--target-branch", base, "--title", title.trim(), "-o", "json",
+            ];
+            if draft {
+                args.extend(["--draft", "true"]);
+            }
+            // az joins several description values with line breaks; one value per line keeps the text intact.
+            let lines: Vec<&str> = body.lines().map(|l| if l.trim().is_empty() { " " } else { l }).collect();
+            if !lines.is_empty() {
+                args.push("--description");
+                args.extend(lines.iter().copied());
+            }
+            let out = run::tool(run::az_program(), Path::new(repo), &args)?;
+            let v: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
+            let id = v["pullRequestId"].as_i64().unwrap_or(0);
+            Ok(format!("https://dev.azure.com/{}/{}/_git/{}/pullrequest/{id}", r.org, r.project, r.repo).replace(' ', "%20"))
+        }
+        _ => Err("Pull requests work for GitHub and Azure DevOps remotes only.".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +361,12 @@ mod tests {
         );
         assert_eq!(parse_azdo("git@ssh.dev.azure.com:v3/acme/proj/repo"), r("acme", "proj", "repo"));
         assert_eq!(parse_azdo("https://github.com/a/b.git"), None);
+    }
+
+    #[test]
+    fn titles_from_branch_names() {
+        assert_eq!(title_from_branch("feat/retry-sessions"), "Retry sessions");
+        assert_eq!(title_from_branch("fix_login"), "Fix login");
+        assert_eq!(title_from_branch("main"), "Main");
     }
 }

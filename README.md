@@ -40,9 +40,10 @@ every action one keystroke away. It starts in under a second and stays out of yo
   did since it left `main`. Commits on the remote that you don't have yet show above your branch.
 - **Hand off to agents.** Copy paths as relative, absolute, `path:line`, or `@mentions`, or copy a diff,
   a failing CI run, or a ticket as plain text for an agent.
-- **Git without the ceremony.** Stage, commit, stash, discard, fetch, pull, and push. Discards can be undone,
-  pull and push always show what will happen first, and an unpushed commit can be taken back.
-  Branches and worktrees are one shortcut away.
+- **Git without the ceremony.** Stage whole files or single hunks, commit or amend, stash, discard, fetch, pull,
+  and push. Discards can be undone, pull and push always show what will happen first, and an unpushed commit
+  can be taken back. Branches and worktrees are one shortcut away.
+- **Open pull requests** on GitHub or Azure DevOps, with the title and description filled in from your commits.
 - **Pull requests, issues, CI, and tickets.** From GitHub (through `gh`) and Azure DevOps (through `az`),
   in the same views.
 - **Tasks and terminals.** Tern finds your npm scripts, VS Code tasks, .NET, Cargo, Gradle, Make, and
@@ -66,6 +67,7 @@ See the [guide](docs/guide.md) for every feature and shortcut.
 ## Install
 
 Download the file for your system from the [latest release](https://github.com/Car-Role/tern/releases/latest).
+From version 0.3.0 on, Tern updates itself: it tells you when a new version is ready and installs it on restart.
 
 | System | File |
 | --- | --- |
