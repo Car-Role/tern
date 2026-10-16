@@ -81,7 +81,14 @@ From version 0.3.0 on, Tern updates itself: it tells you when a new version is r
 The builds are not code-signed yet, so the first launch needs one extra step:
 
 - **Windows:** if SmartScreen says "Windows protected your PC", click **More info**, then **Run anyway**.
-- **macOS:** open the app once with right-click, then **Open**. Or run `xattr -dr com.apple.quarantine /Applications/Tern.app`.
+- **macOS:** Tern is not notarized by Apple yet, so macOS blocks the first launch.
+  1. Drag Tern to **Applications**, then open it once. macOS refuses.
+  2. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to Tern.
+  3. If macOS says Tern "is damaged" instead, it is not damaged: run this in Terminal, then open Tern again.
+
+     ```bash
+     xattr -dr com.apple.quarantine /Applications/Tern.app
+     ```
 - **Linux AppImage:** make it runnable with `chmod +x Tern_*.AppImage`.
 
 ### What Tern needs

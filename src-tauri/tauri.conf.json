@@ -57,7 +57,11 @@
     "copyright": "Copyright (c) 2026 Car-Role. Business Source License 1.1.",
     "homepage": "https://car-role.github.io/tern/",
     "longDescription": "Tern is a fast, keyboard-first app for reviewing many git repos at once: diffs, history, pull requests, CI, tasks, and terminals, built for working alongside coding agents.",
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "10.15"
+    }
   },
   "plugins": {
     "updater": {
