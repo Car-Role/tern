@@ -22,6 +22,8 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npm run check
+      - name: Front-end tests (file viewers: CSV, data trees, logs)
+        run: npm test
       - name: Git identity for the tests (they make commits in temporary repos)
         run: |
           git config --global user.name "Tern CI"

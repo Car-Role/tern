@@ -123,6 +123,17 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
 - Quick edit (`Ctrl E`, then `Ctrl S`) for small fixes.
 - Markdown files show as a page (headings, tables, task lists, code). **Page | Source** in the header,
   or `Ctrl Shift V`, switches. Links to other files open them in Tern. Web links open in the browser.
+- Other files get their own view too. `Ctrl Shift V` switches between that view and the source, as for Markdown.
+  - **Images** (PNG, JPG, GIF, WebP, BMP, ICO, AVIF, and SVG): click to switch between fit and actual size.
+    A changed image in a diff shows **Before** and **After** side by side, or **Swipe** to slide between them.
+  - **PDFs** show in place, up to 40 MB.
+  - **JSON, YAML, and TOML** show as a tree. Click a row to fold or unfold it. Right-click to copy its path
+    or value. Big lists show 200 items at a time. A file with a mistake shows the line and column.
+  - **CSV and TSV** show as a table with a fixed header and row numbers. Tern finds the separator (comma,
+    semicolon, tab, or pipe). Filter rows, or right-click a cell to copy it or the row. Tables up to 100 MB open.
+  - **Logs** (`.log`, and rotated logs like `app.log.1`) follow the file as it grows. Filter by text or
+    `/regex/`, show only errors or warnings, and pause. Scroll up to stop following; the button at the bottom
+    starts it again. If the log is cleared or rotated, the view starts over.
 - CI tab: pipeline runs from Azure DevOps (`az pipelines`) or GitHub Actions (`gh run`) for the repo,
   newest first, with the result, branch, commit, and time. The tab shows the newest result for your
   branch. Enter opens a run: stages, jobs, and steps, with the errors and warnings. "Copy problems for an
@@ -148,7 +159,7 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
 | `Ctrl D` | Split or unified diff |
 | `Ctrl Shift F` / `Ctrl F` | Search everywhere / search this file |
 | `Ctrl Alt F` | Fetch all projects |
-| `Ctrl Shift V` | Markdown page or source |
+| `Ctrl Shift V` | Page view (Markdown, tree, table, image, log) or source |
 | `` Ctrl ` `` / `` Ctrl Shift ` `` | Terminal here / Claude Code here |
 | `Ctrl Shift E` | Open in VS Code |
 | `F5` | Reload |

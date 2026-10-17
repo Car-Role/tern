@@ -25,6 +25,10 @@ export type Change = {
   revHead?: string;
 };
 
+export type FileBytes = { dataUrl: string | null; mime: string; size: number; tooLarge: boolean };
+export type BigText = { text: string | null; size: number; tooLarge: boolean };
+export type Tail = { text: string; offset: number; size: number; reset: boolean; cut: boolean };
+
 export type Hunk = {
   header: string;
   newStart: number;

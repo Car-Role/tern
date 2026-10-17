@@ -12,6 +12,13 @@
   import RunView from "./RunView.svelte";
   import MarkdownView from "./MarkdownView.svelte";
   import HunkPanel from "./HunkPanel.svelte";
+  import ImageView from "./ImageView.svelte";
+  import ImageDiff from "./ImageDiff.svelte";
+  import PdfView from "./PdfView.svelte";
+  import DataTree from "./DataTree.svelte";
+  import CsvTable from "./CsvTable.svelte";
+  import LogView from "./LogView.svelte";
+  import { hasPage, isBinaryKind, richKind } from "../lib/filekind";
   import { codeMenu } from "../lib/menus";
   import { commitUrl } from "../lib/format";
   import { openUrl } from "../lib/api";
@@ -176,6 +183,17 @@
       counts = null;
     }
     try {
+      // Pictures and PDFs have their own views, which read the file themselves.
+      if (isBinaryKind(richKind(v.rel))) {
+        destroy();
+        lastText = "";
+        docText = "";
+        status = "ready";
+        lastKey = k;
+        lastView = v;
+        lastMode = mode;
+        return;
+      }
       const lang = languageFor(baseName(v.rel));
       if (v.kind === "file") {
         const f = await api.readFile(v.repo, v.rel);
@@ -324,8 +342,16 @@
       if (target) jumpTo(target, Math.min(j.line, target.state.doc.lines));
     });
   });
-  const isMd = $derived(v?.kind === "file" && /\.(md|markdown|mdx)$/i.test(v.rel));
-  const page = $derived(isMd && app.mdPreview && !app.editing && status === "ready");
+  const rk = $derived(v && (v.kind === "file" || v.kind === "diff") ? richKind(v.rel) : null);
+  const binary = $derived(isBinaryKind(rk));
+  /** A file with a Page view (Markdown page, data tree, table, picture, or live log) next to its source. */
+  const pageable = $derived(v?.kind === "file" && hasPage(rk));
+  /** Tables, trees, and logs read big files themselves, so they also show when the code view says "too large". */
+  const bigOk = $derived(rk === "csv" || rk === "tsv" || rk === "log" || rk === "json" || rk === "yaml" || rk === "toml");
+  const page = $derived(pageable && app.mdPreview && !app.editing && (status === "ready" || (status === "large" && bigOk)));
+  const pageLabel = $derived(
+    rk === "markdown" ? "Page" : rk === "csv" || rk === "tsv" ? "Table" : rk === "svg" ? "Image" : rk === "log" ? "Live" : "Tree",
+  );
 
   /** A link in a Markdown page to another file: open it, relative to this file. */
   function openLink(href: string) {
@@ -374,20 +400,22 @@
       <span class="grow"></span>
 
       {#if v.kind === "diff"}
-        <div class="seg" role="group" aria-label="Diff layout">
-          <button class:on={app.diffMode === "unified"} onclick={() => app.setDiffMode("unified")}>Unified</button>
-          <button class:on={app.diffMode === "split"} onclick={() => app.setDiffMode("split")}>Split</button>
-        </div>
-        {#if hunkable}
+        {#if !binary}
+          <div class="seg" role="group" aria-label="Diff layout">
+            <button class:on={app.diffMode === "unified"} onclick={() => app.setDiffMode("unified")}>Unified</button>
+            <button class:on={app.diffMode === "split"} onclick={() => app.setDiffMode("split")}>Split</button>
+          </div>
+        {/if}
+        {#if hunkable && !binary}
           <button class="btn" class:on={app.hunksOpen} onclick={() => app.toggleHunks()} title="Stage, unstage, or discard one block of changes (Ctrl+Shift+H)">Hunks</button>
         {/if}
         {#if (!v.rev || v.rev.head === "WORKTREE") && v.changeKind !== "deleted"}
           <button class="btn" onclick={() => app.openFile(v.rel, app.lines?.from)} title="Show the whole file">File</button>
         {/if}
       {:else}
-        {#if isMd}
-          <div class="seg" role="group" aria-label="Markdown layout">
-            <button class:on={app.mdPreview && !app.editing} onclick={() => { if (!app.mdPreview) app.toggleMdPreview(); app.editing = false; }} title="Show as a page (Ctrl+Shift+V)">Page</button>
+        {#if pageable}
+          <div class="seg" role="group" aria-label="Layout">
+            <button class:on={app.mdPreview && !app.editing} onclick={() => { if (!app.mdPreview) app.toggleMdPreview(); app.editing = false; }} title="Show as a {pageLabel.toLowerCase()} (Ctrl+Shift+V)">{pageLabel}</button>
             <button class:on={!app.mdPreview || app.editing} onclick={() => app.mdPreview && app.toggleMdPreview()} title="Show the source (Ctrl+Shift+V)">Source</button>
           </div>
         {/if}
@@ -397,7 +425,7 @@
         {#if app.editing}
           <button class="btn primary" disabled={!dirty || saving} onclick={save}>{saving ? "Saving…" : dirty ? "Save" : "Saved"}</button>
           <button class="btn" onclick={() => (app.editing = false)}>Done</button>
-        {:else}
+        {:else if !binary && status !== "large"}
           <button class="btn" onclick={() => (app.editing = true)} title="Quick edit (Ctrl+E)">Edit</button>
         {/if}
       {/if}
@@ -412,12 +440,38 @@
     {:else if v?.kind === "run"}
       {#key v.run.id}<RunView repo={v.repo} run={v.run} />{/key}
     {/if}
-    {#if page}<MarkdownView text={docText} onLink={openLink} />{/if}
-    {#if showHunks && status === "ready"}<HunkPanel />{/if}
+    {#if v && binary && status === "ready"}
+      {#if v.kind === "file"}
+        {#key v.rel}
+          {#if rk === "pdf"}<PdfView repo={v.repo} rel={v.rel} />{:else}<ImageView repo={v.repo} rel={v.rel} />{/if}
+        {/key}
+      {:else if v.kind === "diff"}
+        {@const head = v.rev ? (v.rev.head === "WORKTREE" ? null : v.rev.head) : null}
+        {@const base = v.rev ? v.rev.base : "HEAD"}
+        {#if rk === "pdf"}
+          {#key `${v.rel}|${base}|${head}`}
+            {#if v.changeKind === "deleted"}<PdfView repo={v.repo} rel={v.oldRel ?? v.rel} rev={base} />{:else}<PdfView repo={v.repo} rel={v.rel} rev={head} />{/if}
+          {/key}
+        {:else}
+          <ImageDiff repo={v.repo} rel={v.rel} oldRel={v.oldRel ?? null} {base} {head} />
+        {/if}
+      {/if}
+    {/if}
+    {#if page && v}
+      {#if rk === "markdown"}<MarkdownView text={docText} onLink={openLink} />
+      {:else if rk === "svg"}{#key v.rel}<ImageView repo={v.repo} rel={v.rel} />{/key}
+      {:else if rk === "log"}{#key `${v.repo}|${v.rel}`}<LogView repo={v.repo} rel={v.rel} />{/key}
+      {:else if rk === "csv" || rk === "tsv"}<CsvTable text={status === "large" ? null : docText} tsv={rk === "tsv"} repo={v.repo} rel={v.rel} />
+      {:else if rk === "json" || rk === "yaml" || rk === "toml"}<DataTree text={status === "large" ? null : docText} kind={rk} repo={v.repo} rel={v.rel} />
+      {/if}
+    {/if}
+    {#if showHunks && status === "ready" && !binary}<HunkPanel />{/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="cm" bind:this={host} class:hidden={status !== "ready" || v?.kind === "issue" || v?.kind === "run" || page}
+    <div class="cm" bind:this={host} class:hidden={status !== "ready" || v?.kind === "issue" || v?.kind === "run" || page || binary}
       class:with-hunks={showHunks} oncontextmenu={onContext}></div>
-    {#if status === "loading"}
+    {#if page}
+      <!-- The page view covers the note below. -->
+    {:else if status === "loading"}
       <p class="note">Loading…</p>
     {:else if status === "binary"}
       <p class="note">This is a binary file ({message}). There is no text to show.</p>

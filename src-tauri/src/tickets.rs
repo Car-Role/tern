@@ -363,7 +363,7 @@ pub fn image(url: &str) -> Result<String, String> {
 }
 
 /// The image type from its first bytes, which is more reliable than the server's label.
-fn sniff(b: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff(b: &[u8]) -> Option<&'static str> {
     if b.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
     } else if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -380,7 +380,7 @@ fn sniff(b: &[u8]) -> Option<&'static str> {
     }
 }
 
-fn base64(data: &[u8]) -> String {
+pub(crate) fn base64(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {

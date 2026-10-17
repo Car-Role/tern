@@ -1,6 +1,7 @@
 // Fake back end for designing in a plain browser. Never loaded inside the Tauri app.
 
 import type { Change, Commit, Config, PullRequest, RepoEntry, RunInfo, Summary, Task } from "./types";
+import { qaBytes, qaFiles, qaReadFile, qaReadTail, qaReadText } from "./mockfiles";
 
 // Fake task runner: prints dev-server-like output with colors.
 type Listeners = { out: (id: number, d: string) => void; exit: (i: RunInfo) => void };
@@ -78,6 +79,7 @@ const files = [
   "src-tauri/src/lib.rs",
   "src-tauri/Cargo.toml",
   "tests/session.test.ts",
+  ...qaFiles,
 ];
 
 let changes: Change[] = [
@@ -86,6 +88,8 @@ let changes: Change[] = [
   { path: "src/lib/retry.ts", oldPath: null, kind: "untracked", staged: false, unstaged: true, mtime: now - 50 },
   { path: "src/components/Grid.svelte", oldPath: "src/components/Table.svelte", kind: "renamed", staged: true, unstaged: false, mtime: now - 3000 },
   { path: "docs/old-notes.md", oldPath: null, kind: "deleted", staged: false, unstaged: true, mtime: null },
+  { path: "qa/screenshot.png", oldPath: null, kind: "modified", staged: false, unstaged: true, mtime: now - 90 },
+  { path: "qa/new.png", oldPath: null, kind: "untracked", staged: false, unstaged: true, mtime: now - 95 },
 ];
 
 const shaOf = (i: number) => (((i + 1) * 2654435761) >>> 0).toString(16).padStart(8, "0").repeat(5).slice(0, 40);
@@ -117,7 +121,7 @@ const commits = [
 function summary(r: RepoEntry, i: number): Summary {
   const dirty = i % 2 === 0;
   const azdo = r.path.startsWith("C:\\Work");
-  const mine = dirty ? changes.slice(0, Math.max(1, 5 - i)) : [];
+  const mine = dirty ? (i === 0 ? changes : changes.slice(0, Math.max(1, 5 - i))) : [];
   return {
     path: r.path,
     branch: r.parent ? "claude/fix-sync" : i === 3 ? "feature/anchors" : "main",
@@ -216,7 +220,11 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     case "list_repos": return repos;
     case "summaries": return (args.paths as string[]).map((p) => summary(repos.find((r) => r.path === p)!, repos.findIndex((r) => r.path === p)));
     case "list_files": return files;
+    case "file_bytes": return qaBytes(String(args.rel), args.rev ?? null);
+    case "read_text": return qaReadText(String(args.rel));
+    case "read_tail": return qaReadTail(String(args.rel), Number(args.offset));
     case "read_file":
+      if (String(args.rel).startsWith("qa/") && qaReadFile(String(args.rel))) return qaReadFile(String(args.rel));
       if (String(args.rel).endsWith("fetcher.ts")) {
         // A long file, so jumping to a line can be tested.
         const lines = Array.from({ length: 200 }, (_, i) => (i === 119 ? "export function fetcher(url: string) { return fetch(url); }" : `// filler line ${i + 1}`));

@@ -143,7 +143,7 @@ export const commands: Cmd[] = [
   {
     id: "view.mdPreview",
     group: "View",
-    label: "Switch Markdown between page and source",
+    label: "Switch between the page view and the source (Markdown, data, tables, logs)",
     keys: "Ctrl+Shift+V",
     run: () => app.toggleMdPreview(),
   },

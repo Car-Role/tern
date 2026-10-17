@@ -4,6 +4,7 @@ mod clone;
 mod config;
 mod git;
 mod hunks;
+mod media;
 mod issues;
 mod prs;
 mod pty;
@@ -313,6 +314,21 @@ async fn stage(repo: String, paths: Vec<String>) -> Res<()> {
 #[tauri::command]
 async fn unstage(repo: String, paths: Vec<String>) -> Res<()> {
     blocking(move || git::unstage(&repo, &paths)).await
+}
+
+#[tauri::command]
+async fn file_bytes(repo: String, rel: String, rev: Option<String>) -> Res<media::FileBytes> {
+    blocking(move || media::file_bytes(&repo, &rel, rev.as_deref())).await
+}
+
+#[tauri::command]
+async fn read_text(repo: String, rel: String, max: u64) -> Res<media::BigText> {
+    blocking(move || media::read_text(&repo, &rel, max)).await
+}
+
+#[tauri::command]
+async fn read_tail(repo: String, rel: String, offset: u64, max: u64) -> Res<media::Tail> {
+    blocking(move || media::read_tail(&repo, &rel, offset, max)).await
 }
 
 #[tauri::command]
@@ -684,6 +700,9 @@ pub fn run() {
             stage,
             unstage,
             commit,
+            file_bytes,
+            read_text,
+            read_tail,
             file_hunks,
             apply_hunk,
             pr_draft,

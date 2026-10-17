@@ -48,6 +48,9 @@ every action one keystroke away. It starts in under a second and stays out of yo
   in the same views.
 - **Tasks and terminals.** Tern finds your npm scripts, VS Code tasks, .NET, Cargo, Gradle, Make, and
   Docker Compose tasks. Tasks and terminals run on real pseudo-terminals, so prompts and full-screen tools work.
+- **Views for more than code.** Markdown as a page, images with a before-and-after view for changed pictures,
+  PDFs, JSON, YAML, and TOML as a tree you can fold, CSV and TSV as a table, and logs that follow the file as it grows,
+  with filters and errors marked. Big files (tables up to 100 MB) stay fast.
 - **Search everything.** Code, file names, commits, branches, PRs, and issues, in one repo, a space, or all repos.
 - **Spaces and themes.** Group repos into spaces like Work and Personal. Twelve themes, dark and light, or follow your system.
 

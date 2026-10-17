@@ -29,6 +29,9 @@ import type {
   StashFiles,
   FileHunks,
   PrDraft,
+  FileBytes,
+  BigText,
+  Tail,
 } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -113,6 +116,12 @@ export const api = {
   undoDiscard: (repo: string, backup: string, tracked: string[]) => call<void>("undo_discard", { repo, backup, tracked }),
   undoCommit: (repo: string) => call<string>("undo_commit", { repo }),
   unstage: (repo: string, paths: string[]) => call<void>("unstage", { repo, paths }),
+  /** A file as a data URL: from disk (rev null) or from a commit. For images and PDFs. */
+  fileBytes: (repo: string, rel: string, rev: string | null = null) => call<FileBytes>("file_bytes", { repo, rel, rev }),
+  /** Text bigger than the code view takes, for tables and trees. */
+  readText: (repo: string, rel: string, max: number) => call<BigText>("read_text", { repo, rel, max }),
+  /** The new end of a growing file. Offset 0 starts over with the last `max` bytes. */
+  readTail: (repo: string, rel: string, offset: number, max: number) => call<Tail>("read_tail", { repo, rel, offset, max }),
   fileHunks: (repo: string, rel: string) => call<FileHunks>("file_hunks", { repo, rel }),
   /** mode: stage | unstage | discard. Discard returns a backup commit, for undo. */
   applyHunk: (repo: string, patch: string, mode: "stage" | "unstage" | "discard") => call<string>("apply_hunk", { repo, patch, mode }),
