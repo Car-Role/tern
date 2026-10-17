@@ -329,7 +329,7 @@
                 {#if topen}
                   {#each t.columns as c}
                     <div class="col" class:nested={!oneGroup}>
-                      <span class="cn" class:key={c.key}>{c.key ? "🔑 " : ""}{c.name}</span>
+                      <span class="cn" class:key={c.key} title={c.key ? "Primary key" : undefined}>{c.name}{#if c.key}<span class="pk">PK</span>{/if}</span>
                       <span class="ct">{c.kind}{c.nullable ? "" : " ·"}</span>
                     </div>
                   {/each}
@@ -593,9 +593,11 @@
     display: flex;
     align-items: center;
   }
-  .trow.nested,
-  .col.nested {
+  .trow.nested {
     padding-left: 12px;
+  }
+  .col.nested {
+    padding-left: 46px;
   }
   .tname {
     flex: 1;
@@ -652,6 +654,14 @@
   }
   .cn.key {
     color: var(--amber);
+  }
+  .pk {
+    margin-left: 5px;
+    font: 600 9px var(--ui);
+    padding: 0 3px;
+    border-radius: 3px;
+    border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
+    vertical-align: 1px;
   }
   .ct {
     color: var(--faint);
