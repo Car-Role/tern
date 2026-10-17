@@ -20,6 +20,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
@@ -28,6 +29,22 @@ portable-pty = "0.9"
 trash = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Database tool. TLS comes from the system (SChannel, Security.framework, OpenSSL), so company CAs work.
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["net", "time", "sync", "macros"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+tokio-postgres = "0.7"
+postgres-native-tls = "0.5"
+native-tls = "0.2"
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "sql-browser-tokio"] }
+futures-util = { version = "0.3", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "tokio-native-tls-comp"] }
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
+
+# Windows sign-in (integrated security) for SQL Server.
+[target.'cfg(windows)'.dependencies]
+tiberius = { version = "0.12", default-features = false, features = ["winauth"] }
 
 [profile.release]
 codegen-units = 1

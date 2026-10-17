@@ -18,6 +18,8 @@
   import DataTree from "./DataTree.svelte";
   import CsvTable from "./CsvTable.svelte";
   import LogView from "./LogView.svelte";
+  import DataView from "./DataView.svelte";
+  import type { DbConn } from "../lib/types";
   import { hasPage, isBinaryKind, richKind } from "../lib/filekind";
   import { codeMenu } from "../lib/menus";
   import { commitUrl } from "../lib/format";
@@ -342,6 +344,12 @@
       if (target) jumpTo(target, Math.min(j.line, target.state.doc.lines));
     });
   });
+  /** A connection for an SQLite file in the file list. Not saved: it lives while the file is open. */
+  function sqliteConn(repo: string, rel: string): DbConn {
+    const sep = repo.includes("\\") ? "\\" : "/";
+    const file = repo.replace(/[\\/]+$/, "") + sep + rel.split("/").join(sep);
+    return { id: "file:" + file, name: baseName(rel), engine: "sqlite", file, host: "", port: 0, database: "", user: "", tls: "off", hasPassword: false, allowWrites: false, color: "" };
+  }
   const rk = $derived(v && (v.kind === "file" || v.kind === "diff") ? richKind(v.rel) : null);
   const binary = $derived(isBinaryKind(rk));
   /** A file with a Page view (Markdown page, data tree, table, picture, or live log) next to its source. */
@@ -443,7 +451,9 @@
     {#if v && binary && status === "ready"}
       {#if v.kind === "file"}
         {#key v.rel}
-          {#if rk === "pdf"}<PdfView repo={v.repo} rel={v.rel} />{:else}<ImageView repo={v.repo} rel={v.rel} />{/if}
+          {#if rk === "pdf"}<PdfView repo={v.repo} rel={v.rel} />
+          {:else if rk === "sqlite"}<DataView fixed={sqliteConn(v.repo, v.rel)} />
+          {:else}<ImageView repo={v.repo} rel={v.rel} />{/if}
         {/key}
       {:else if v.kind === "diff"}
         {@const head = v.rev ? (v.rev.head === "WORKTREE" ? null : v.rev.head) : null}
@@ -452,6 +462,8 @@
           {#key `${v.rel}|${base}|${head}`}
             {#if v.changeKind === "deleted"}<PdfView repo={v.repo} rel={v.oldRel ?? v.rel} rev={base} />{:else}<PdfView repo={v.repo} rel={v.rel} rev={head} />{/if}
           {/key}
+        {:else if rk === "sqlite"}
+          <p class="note">This is an SQLite database, so there is no text diff. Open the file to look inside it.</p>
         {:else}
           <ImageDiff repo={v.repo} rel={v.rel} oldRel={v.oldRel ?? null} {base} {head} />
         {/if}

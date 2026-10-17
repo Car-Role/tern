@@ -6,11 +6,13 @@ import { Term } from "./term";
 import { closeShell, disposeRun, feedRun, focusShell, isInsideTerminal, openShell, retheme, runText, writeToShell } from "./shells";
 
 /** One place you have been: project, tab, open file or diff, and review. Back and forward move between them. */
-type Nav = { current: string | null; tab: TabId; view: View | null; review: Review | null; tickets: boolean };
+type Nav = { current: string | null; tab: TabId; view: View | null; review: Review | null; tickets: boolean; data: boolean };
 
 /** A built-in terminal tab in the bottom panel. */
 export type ShellTab = { id: number; repo: string; title: string; alive: boolean; created: number };
 import type {
+  DbConn,
+  DbSchema,
   Change,
   ChangeKind,
   Commit,
@@ -956,6 +958,78 @@ class Store {
     }
   }
 
+  // Database tool
+
+  /** The database screen replaces the project's list and viewer while it is open. */
+  dataOpen = $state(false);
+  dbConns = $state<DbConn[]>([]);
+  dbSel = $state<string | null>(saved("dbSel") || null);
+  dbSchemas = $state<Record<string, { loading: boolean; error: string | null; data: DbSchema | null }>>({});
+
+  openData(select?: string) {
+    if (!this.dataOpen) this.remember();
+    this.dataOpen = true;
+    this.ticketsOpen = false;
+    this.overlay = null;
+    this.loadDbConns().then(() => {
+      if (select) this.selectDb(select);
+      else if (!this.dbConns.some((c) => c.id === this.dbSel) && this.dbConns.length) this.selectDb(this.dbConns[0].id);
+      else if (this.dbSel && !this.dbSchemas[this.dbSel]) this.loadDbSchema(this.dbSel);
+    });
+  }
+
+  closeData() {
+    this.dataOpen = false;
+  }
+
+  async loadDbConns() {
+    try {
+      this.dbConns = await api.dbList();
+    } catch (e) {
+      this.notify(`Could not read the saved connections: ${firstLine(String(e))}`, "err");
+    }
+  }
+
+  selectDb(id: string) {
+    this.dbSel = id;
+    save("dbSel", id);
+    if (!this.dbSchemas[id]?.data) this.loadDbSchema(id);
+  }
+
+  async loadDbSchema(id: string) {
+    const conn = this.dbConns.find((c) => c.id === id);
+    if (!conn) return;
+    this.dbSchemas = { ...this.dbSchemas, [id]: { loading: true, error: null, data: this.dbSchemas[id]?.data ?? null } };
+    try {
+      const data = await api.dbSchema(conn);
+      this.dbSchemas = { ...this.dbSchemas, [id]: { loading: false, error: null, data } };
+    } catch (e) {
+      this.dbSchemas = { ...this.dbSchemas, [id]: { loading: false, error: String(e), data: null } };
+    }
+  }
+
+  async saveDbConn(conn: DbConn, password: string | null) {
+    const saved = await api.dbSave(conn, password);
+    await this.loadDbConns();
+    // Settings changed: the old schema may be from another server.
+    const { [saved.id]: _, ...rest } = this.dbSchemas;
+    this.dbSchemas = rest;
+    this.selectDb(saved.id);
+    return saved;
+  }
+
+  async removeDbConn(id: string) {
+    await api.dbRemove(id);
+    const { [id]: _, ...rest } = this.dbSchemas;
+    this.dbSchemas = rest;
+    await this.loadDbConns();
+    if (this.dbSel === id) {
+      this.dbSel = this.dbConns[0]?.id ?? null;
+      save("dbSel", this.dbSel ?? "");
+    }
+  }
+
+
   // Tickets
 
   /** The tickets view replaces the project's list and viewer while it is open. */
@@ -983,6 +1057,7 @@ class Store {
   openTickets() {
     if (!this.ticketsOpen) this.remember();
     this.ticketsOpen = true;
+    this.dataOpen = false;
     this.overlay = null;
     if (Date.now() - this.tickets.at > 120_000) this.loadTickets();
   }
@@ -1151,6 +1226,7 @@ class Store {
 
   select(path: string | null) {
     this.ticketsOpen = false;
+    this.dataOpen = false;
     if (path === this.current) return;
     this.remember();
     if (this.current) this.markSeen(this.current);
@@ -1693,12 +1769,12 @@ class Store {
   // Back and forward
 
   private navNow(): Nav {
-    return { current: this.current, tab: this.tab, view: this.view, review: this.review, tickets: this.ticketsOpen };
+    return { current: this.current, tab: this.tab, view: this.view, review: this.review, tickets: this.ticketsOpen, data: this.dataOpen };
   }
 
   private sameNav(a: Nav, b: Nav) {
     const v = (x: View | null) => (x ? `${x.kind}|${x.repo}|${x.rel}|${x.kind === "issue" ? x.number : x.kind === "diff" ? (x.rev?.head ?? "") : ""}` : "");
-    return a.tickets === b.tickets && a.current === b.current && a.tab === b.tab && v(a.view) === v(b.view) && (a.review?.head ?? "") === (b.review?.head ?? "");
+    return a.tickets === b.tickets && a.data === b.data && a.current === b.current && a.tab === b.tab && v(a.view) === v(b.view) && (a.review?.head ?? "") === (b.review?.head ?? "");
   }
 
   /** Saves where you are before a move, so Back can return here. */
@@ -1724,6 +1800,7 @@ class Store {
         if (n.current) this.markSeen(n.current);
       }
       this.ticketsOpen = n.tickets;
+      this.dataOpen = n.data;
       this.tab = n.tab;
       this.review = n.review;
       this.view = n.view;

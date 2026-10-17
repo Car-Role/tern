@@ -316,3 +316,59 @@ export type History = {
   outgoing: string[];
 };
 export type OpenTarget = "terminal" | "agent" | "editor" | "explorer";
+
+// Database tool
+
+export type DbEngine = "sqlite" | "postgres" | "mssql" | "redis";
+export type DbTls = "off" | "prefer" | "require" | "requireNoVerify";
+
+/** A saved connection. The password is in the system keychain, not here. */
+export interface DbConn {
+  id: string;
+  name: string;
+  engine: DbEngine;
+  file: string;
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  tls: DbTls;
+  hasPassword: boolean;
+  allowWrites: boolean;
+  color: string;
+}
+
+export interface DbColumn {
+  name: string;
+  kind: string;
+  nullable: boolean;
+  key: boolean;
+}
+
+export interface DbTable {
+  schema: string;
+  name: string;
+  /** "table" or "view"; for Redis, the key type. */
+  kind: string;
+  columns: DbColumn[];
+}
+
+export interface DbSchema {
+  version: string;
+  tables: DbTable[];
+  truncated: boolean;
+}
+
+export interface DbResultSet {
+  columns: string[];
+  rows: unknown[][];
+  /** Rows past the first 1,000 that were not sent. */
+  more: number;
+  affected: number | null;
+}
+
+export interface DbQueryResult {
+  sets: DbResultSet[];
+  ms: number;
+  note: string | null;
+}

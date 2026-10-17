@@ -28,6 +28,7 @@ export const commands: Cmd[] = [
   { id: "go.files", group: "Go", label: "Go to file", keys: "Ctrl+P", run: palette("files") },
   { id: "go.search", group: "Go", label: "Search code, files, commits, and more across repos", keys: "Ctrl+Shift+F", run: () => app.openSearch({}) },
   { id: "go.searchHere", group: "Go", label: "Search in this file", keys: "Ctrl+F", run: () => app.searchHere() },
+  { id: "go.data", group: "Go", label: "Databases: SQLite, Postgres, SQL Server, Redis", keys: "Ctrl+Shift+D", run: () => (app.dataOpen ? app.closeData() : app.openData()) },
   { id: "go.tickets", group: "Go", label: "Show my tickets", keys: "Ctrl+Shift+T", run: () => (app.ticketsOpen ? app.closeTickets() : app.openTickets()) },
   { id: "go.definition", group: "Go", label: "Go to definition", keys: "F12", run: () => app.goToDefinition() },
   { id: "go.usages", group: "Go", label: "Find where it is used", keys: "Shift+F12", run: () => app.findUsages() },

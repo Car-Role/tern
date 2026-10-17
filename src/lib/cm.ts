@@ -16,6 +16,7 @@ import { HighlightStyle, syntaxHighlighting, LanguageDescription, bracketMatchin
 import { languages } from "@codemirror/language-data";
 import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { tags as t } from "@lezer/highlight";
 
 const highlight = HighlightStyle.define([
@@ -244,4 +245,32 @@ export function languageFor(fileName: string): Promise<Extension> {
     cache.set(desc.name, p);
   }
   return p;
+}
+
+/** The database tool's query editor: SQL (or Redis commands), completion, and Ctrl+Enter to run. */
+export function queryExtensions(opts: { language: Compartment; run: () => void; change: (text: string) => void }): Extension[] {
+  return [
+    lineNumbers(),
+    highlightSpecialChars(),
+    drawSelection(),
+    highlightActiveLine(),
+    bracketMatching(),
+    closeBrackets(),
+    history(),
+    autocompletion({ activateOnTyping: true }),
+    syntaxHighlighting(highlight),
+    keymap.of([
+      { key: "Mod-Enter", run: () => (opts.run(), true) },
+      { key: "Shift-Enter", run: () => (opts.run(), true) },
+      ...closeBracketsKeymap,
+      ...completionKeymap,
+      ...defaultKeymap,
+      ...historyKeymap,
+      indentWithTab,
+    ]),
+    theme,
+    EditorView.lineWrapping,
+    EditorView.updateListener.of((u) => u.docChanged && opts.change(u.state.doc.toString())),
+    opts.language.of([]),
+  ];
 }

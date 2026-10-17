@@ -6,7 +6,7 @@ export const qaFiles = [
   "qa/config.json", "qa/big.json", "qa/deep.json", "qa/bad.json", "qa/settings.jsonc",
   "qa/app.yaml", "qa/multi.yaml", "qa/bad.yaml", "qa/bomb.yaml", "qa/Cargo.toml", "qa/bad.toml",
   "qa/people.csv", "qa/big.csv", "qa/huge.csv", "qa/ragged.csv", "qa/semi.csv", "qa/data.tsv", "qa/empty.csv",
-  "qa/server.log", "qa/rotate.log", "qa/quiet.log",
+  "qa/server.log", "qa/rotate.log", "qa/quiet.log", "qa/app.db",
 ];
 
 function picture(w: number, h: number, hue: number, label: string) {

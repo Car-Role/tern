@@ -85,6 +85,10 @@
       use:hover={() => ({ title: "My tickets", text: "Azure DevOps work items and GitHub issues assigned to you.", hint: "Ctrl+Shift+T" })}>
       Tickets{#if app.tickets.items.length}<span class="badge">{app.tickets.items.length}</span>{/if}
     </button>
+    <button class="search tix" class:on={app.dataOpen} onclick={() => (app.dataOpen ? app.closeData() : app.openData())}
+      use:hover={() => ({ title: "Databases", text: "Look at SQLite, Postgres, SQL Server, and Redis. Read-only unless you allow writes.", hint: "Ctrl+Shift+D" })}>
+      Data
+    </button>
     <button class="search" onclick={() => (app.overlay = "search")}
       use:hover={() => ({ title: "Search", text: "Code, file names, commits, branches, PRs, and issues, in this repo, this space, or any repos you pick.", hint: "Ctrl+Shift+F" })}>
       Search

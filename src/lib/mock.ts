@@ -2,6 +2,7 @@
 
 import type { Change, Commit, Config, PullRequest, RepoEntry, RunInfo, Summary, Task } from "./types";
 import { qaBytes, qaFiles, qaReadFile, qaReadTail, qaReadText } from "./mockfiles";
+import { mockDb } from "./mockdb";
 
 // Fake task runner: prints dev-server-like output with colors.
 type Listeners = { out: (id: number, d: string) => void; exit: (i: RunInfo) => void };
@@ -213,6 +214,7 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function mock(cmd: string, args: Record<string, any>): Promise<unknown> {
   await wait(cmd === "prepare_pr" || cmd === "list_prs" ? 400 : 30);
+  if (cmd.startsWith("db_")) return mockDb(cmd, args);
   switch (cmd) {
     case "get_config": return config;
     case "set_config": config = args.config; return null;

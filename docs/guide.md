@@ -134,6 +134,22 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
   - **Logs** (`.log`, and rotated logs like `app.log.1`) follow the file as it grows. Filter by text or
     `/regex/`, show only errors or warnings, and pause. Scroll up to stop following; the button at the bottom
     starts it again. If the log is cleared or rotated, the view starts over.
+- **Data** (`Ctrl Shift D`, or **Data** in the title bar) looks at databases: SQLite, Postgres, SQL Server
+  (and Azure SQL), and Redis.
+  - **+** adds a connection. **Test** checks it before you save. Passwords go to the system keychain
+    (Windows Credential Manager, macOS Keychain, or the Secret Service on Linux), never to a file.
+    For SQL Server, leave the user empty to sign in with your Windows account, and write `server\instance`
+    for a named instance. A color dot helps you tell production from development.
+  - Connections are **read-only** unless you turn on **Allow writes**. Each database enforces it: SQLite
+    opens the file read-only, Postgres refuses writes for the session, SQL Server runs the batch in a
+    transaction that is always rolled back, and Redis allows only commands that read. With writes allowed,
+    the **Read-only** button in the bar turns them on, and Tern asks before a query that changes data.
+  - Click a table for its first 100 rows, or a Redis key for its value. Right-click for more. The editor
+    completes table and column names. `Ctrl Enter` runs the query, or only the selected text. A batch with
+    several statements shows a tab per result. Results show the first 1,000 rows and say how many more there are.
+  - **Copy schema** copies every table and column as short lines an agent can read. **Copy ▾** on a result
+    copies it for an agent (the query and a Markdown table), or as tab-separated text, CSV, JSON, or Markdown.
+  - A `.db`, `.sqlite`, or `.sqlite3` file in a repo opens in the same view, read-only.
 - CI tab: pipeline runs from Azure DevOps (`az pipelines`) or GitHub Actions (`gh run`) for the repo,
   newest first, with the result, branch, commit, and time. The tab shows the newest result for your
   branch. Enter opens a run: stages, jobs, and steps, with the errors and warnings. "Copy problems for an
@@ -159,6 +175,7 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
 | `Ctrl D` | Split or unified diff |
 | `Ctrl Shift F` / `Ctrl F` | Search everywhere / search this file |
 | `Ctrl Alt F` | Fetch all projects |
+| `Ctrl Shift D` | Databases |
 | `Ctrl Shift V` | Page view (Markdown, tree, table, image, log) or source |
 | `` Ctrl ` `` / `` Ctrl Shift ` `` | Terminal here / Claude Code here |
 | `Ctrl Shift E` | Open in VS Code |

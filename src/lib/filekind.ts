@@ -1,6 +1,6 @@
 // Which view a file gets, from its name.
 
-export type RichKind = "markdown" | "image" | "svg" | "pdf" | "json" | "yaml" | "toml" | "csv" | "tsv" | "log";
+export type RichKind = "markdown" | "image" | "svg" | "pdf" | "json" | "yaml" | "toml" | "csv" | "tsv" | "log" | "sqlite";
 
 const BY_EXT: Record<string, RichKind> = {
   md: "markdown", markdown: "markdown", mdx: "markdown",
@@ -13,6 +13,7 @@ const BY_EXT: Record<string, RichKind> = {
   csv: "csv",
   tsv: "tsv", tab: "tsv",
   log: "log",
+  db: "sqlite", sqlite: "sqlite", sqlite3: "sqlite", db3: "sqlite", s3db: "sqlite",
 };
 
 /** Files whose whole name says what they are. */
@@ -31,11 +32,11 @@ export function richKind(rel: string): RichKind | null {
 }
 
 /** Kinds that are pictures or documents, not text: the code view never loads them. */
-export const isBinaryKind = (k: RichKind | null) => k === "image" || k === "pdf";
+export const isBinaryKind = (k: RichKind | null) => k === "image" || k === "pdf" || k === "sqlite";
 
 /** Kinds with a Page view next to the Source (code) view. */
-export const hasPage = (k: RichKind | null) => k !== null && k !== "image" && k !== "pdf";
+export const hasPage = (k: RichKind | null) => k !== null && !isBinaryKind(k);
 
 export const kindLabel: Record<RichKind, string> = {
-  markdown: "Markdown", image: "Image", svg: "SVG", pdf: "PDF", json: "JSON", yaml: "YAML", toml: "TOML", csv: "CSV", tsv: "TSV", log: "Log",
+  markdown: "Markdown", image: "Image", svg: "SVG", pdf: "PDF", json: "JSON", yaml: "YAML", toml: "TOML", csv: "CSV", tsv: "TSV", log: "Log", sqlite: "SQLite",
 };

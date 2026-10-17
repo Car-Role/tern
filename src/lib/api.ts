@@ -2,6 +2,9 @@
 // so the screen can be designed and tested with `npm run dev`.
 
 import type {
+  DbConn,
+  DbQueryResult,
+  DbSchema,
   Config,
   FileDiff,
   FileText,
@@ -122,6 +125,15 @@ export const api = {
   readText: (repo: string, rel: string, max: number) => call<BigText>("read_text", { repo, rel, max }),
   /** The new end of a growing file. Offset 0 starts over with the last `max` bytes. */
   readTail: (repo: string, rel: string, offset: number, max: number) => call<Tail>("read_tail", { repo, rel, offset, max }),
+  dbList: () => call<DbConn[]>("db_list"),
+  /** `password`: null keeps the saved one, "" removes it. */
+  dbSave: (conn: DbConn, password: string | null) => call<DbConn>("db_save", { conn, password }),
+  dbRemove: (id: string) => call<void>("db_remove", { id }),
+  dbDisconnect: (id: string) => call<void>("db_disconnect", { id }),
+  /** Connects and returns the server version. `password` is the one typed in the form. */
+  dbTest: (conn: DbConn, password: string | null) => call<string>("db_test", { conn, password }),
+  dbSchema: (conn: DbConn) => call<DbSchema>("db_schema", { conn }),
+  dbQuery: (conn: DbConn, sql: string, write: boolean) => call<DbQueryResult>("db_query", { conn, sql, write }),
   fileHunks: (repo: string, rel: string) => call<FileHunks>("file_hunks", { repo, rel }),
   /** mode: stage | unstage | discard. Discard returns a backup commit, for undo. */
   applyHunk: (repo: string, patch: string, mode: "stage" | "unstage" | "discard") => call<string>("apply_hunk", { repo, patch, mode }),

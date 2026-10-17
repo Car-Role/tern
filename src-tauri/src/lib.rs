@@ -2,6 +2,7 @@ mod branches;
 mod ci;
 mod clone;
 mod config;
+mod db;
 mod git;
 mod hunks;
 mod media;
@@ -31,6 +32,8 @@ struct AppState {
     config_dir: PathBuf,
     config: Mutex<Config>,
     runner: Arc<Runner>,
+    /// Open database connections, kept for reuse.
+    db: db::Pool,
     terminals: pty::Terminals,
     /** Files that Windows (or macOS) asked Tern to open, not yet shown. */
     opened: Mutex<Vec<String>>,
@@ -324,6 +327,52 @@ async fn file_bytes(repo: String, rel: String, rev: Option<String>) -> Res<media
 #[tauri::command]
 async fn read_text(repo: String, rel: String, max: u64) -> Res<media::BigText> {
     blocking(move || media::read_text(&repo, &rel, max)).await
+}
+
+// ---- Database tool ----
+
+#[tauri::command]
+fn db_list(state: State<AppState>) -> Vec<db::Conn> {
+    db::list(&state.config_dir)
+}
+
+/// `password`: null keeps the saved one, "" removes it.
+#[tauri::command]
+async fn db_save(state: State<'_, AppState>, conn: db::Conn, password: Option<String>) -> Res<db::Conn> {
+    let dir = state.config_dir.clone();
+    let id = conn.id.clone();
+    let saved = blocking(move || db::save(&dir, conn, password)).await?;
+    state.db.forget(&id).await;
+    Ok(saved)
+}
+
+#[tauri::command]
+async fn db_remove(state: State<'_, AppState>, id: String) -> Res<()> {
+    state.db.forget(&id).await;
+    let dir = state.config_dir.clone();
+    blocking(move || db::remove(&dir, &id)).await
+}
+
+#[tauri::command]
+async fn db_disconnect(state: State<'_, AppState>, id: String) -> Res<()> {
+    state.db.forget(&id).await;
+    Ok(())
+}
+
+/// Connects and returns the server version. `password` is the one typed in the form, before saving.
+#[tauri::command]
+async fn db_test(state: State<'_, AppState>, conn: db::Conn, password: Option<String>) -> Res<String> {
+    db::test(&state.db, &conn, password).await
+}
+
+#[tauri::command]
+async fn db_schema(state: State<'_, AppState>, conn: db::Conn) -> Res<db::Schema> {
+    db::schema(&state.db, &conn).await
+}
+
+#[tauri::command]
+async fn db_query(state: State<'_, AppState>, conn: db::Conn, sql: String, write: bool) -> Res<db::QueryResult> {
+    db::query(&state.db, &conn, &sql, write).await
 }
 
 #[tauri::command]
@@ -664,6 +713,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             let config = config::load(&config_dir);
@@ -677,7 +727,7 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 let _ = w.set_decorations(true);
             }
-            app.manage(AppState { config_dir, config: Mutex::new(config), runner: Arc::new(Runner::default()), terminals: pty::Terminals::default(), opened });
+            app.manage(AppState { config_dir, config: Mutex::new(config), runner: Arc::new(Runner::default()), db: db::Pool::default(), terminals: pty::Terminals::default(), opened });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -703,6 +753,13 @@ pub fn run() {
             file_bytes,
             read_text,
             read_tail,
+            db_list,
+            db_save,
+            db_remove,
+            db_disconnect,
+            db_test,
+            db_schema,
+            db_query,
             file_hunks,
             apply_hunk,
             pr_draft,

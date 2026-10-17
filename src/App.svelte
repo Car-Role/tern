@@ -9,6 +9,7 @@
   import Rail from "./components/Rail.svelte";
   import TitleBar from "./components/TitleBar.svelte";
   import Tickets from "./components/Tickets.svelte";
+  import DataView from "./components/DataView.svelte";
   import PrCreate from "./components/PrCreate.svelte";
   import ListPane from "./components/ListPane.svelte";
   import Viewer from "./components/Viewer.svelte";
@@ -129,6 +130,8 @@
   <div class="grip" role="separator" aria-orientation="vertical" onpointerdown={drag("rail")}></div>
   {#if app.ticketsOpen}
     <Tickets />
+  {:else if app.dataOpen}
+    <DataView />
   {:else if app.current}
     <ListPane />
     <div class="grip" role="separator" aria-orientation="vertical" onpointerdown={drag("list")}></div>

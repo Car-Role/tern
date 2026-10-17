@@ -51,6 +51,9 @@ every action one keystroke away. It starts in under a second and stays out of yo
 - **Views for more than code.** Markdown as a page, images with a before-and-after view for changed pictures,
   PDFs, JSON, YAML, and TOML as a tree you can fold, CSV and TSV as a table, and logs that follow the file as it grows,
   with filters and errors marked. Big files (tables up to 100 MB) stay fast.
+- **Databases.** Look at SQLite, Postgres, SQL Server, and Redis: browse tables or keys, run queries, and copy the
+  schema or results for an agent. Connections are read-only unless you allow writes, and passwords stay in your
+  system keychain. A `.db` file in a repo opens right in the file view.
 - **Search everything.** Code, file names, commits, branches, PRs, and issues, in one repo, a space, or all repos.
 - **Spaces and themes.** Group repos into spaces like Work and Personal. Twelve themes, dark and light, or follow your system.
 
