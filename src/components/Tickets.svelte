@@ -929,4 +929,11 @@
       animation: none;
     }
   }
+  /* Cells wrap only at spaces and hyphens, so short columns like "ID" never break into letters. */
+  .md :global(th),
+  .md :global(td) {
+    overflow-wrap: break-word;
+    word-break: normal;
+    min-width: 2.5em;
+  }
 </style>

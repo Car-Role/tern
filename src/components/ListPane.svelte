@@ -873,7 +873,7 @@
               from {dirName(r.change.oldPath) === dirName(r.change.path) ? baseName(r.change.oldPath) : r.change.oldPath}
             </span>
           {/if}
-          <span class="dir">&lrm;{dirName(r.change.path)}&lrm;</span>
+          <span class="fpath">&lrm;{dirName(r.change.path)}&lrm;</span>
           {#if isHot(r.change)}<span class="fresh"></span>{/if}
           {#if r.section}
             <button
@@ -891,7 +891,7 @@
           <span class="indent" style:width="{r.depth * 14}px"></span>
           <span class="chev"></span>
           <span class="fname">{r.depth === 0 && filter ? baseName(r.name) : r.name}</span>
-          {#if filter}<span class="dir">&lrm;{dirName(r.path)}&lrm;</span>{/if}
+          {#if filter}<span class="fpath">&lrm;{dirName(r.path)}&lrm;</span>{/if}
         {:else if r.type === "pr"}
           <div class="two">
             <div class="line1">
@@ -1239,7 +1239,8 @@
     flex-shrink: 0;
     max-width: 70%;
   }
-  .dir {
+  /* The folder part of a file path, cut at the start when long (so it must not be named .dir: folder rows use that). */
+  .fpath {
     color: var(--faint);
     overflow: hidden;
     text-overflow: ellipsis;

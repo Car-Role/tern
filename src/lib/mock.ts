@@ -222,6 +222,17 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
         const lines = Array.from({ length: 200 }, (_, i) => (i === 119 ? "export function fetcher(url: string) { return fetch(url); }" : `// filler line ${i + 1}`));
         return text(lines.join("\n"));
       }
+      if (String(args.rel).endsWith(".md")) {
+        // Markdown with a table whose first column is short, to check that cells never break into letters.
+        return text([
+          "# Features built so far", "",
+          "| ID | Feature | Where |", "| --- | --- | --- |",
+          "| F1 | Print preview is temporary: nothing is saved between opens; old saved layouts (`app.print-layout.<siteId>`) are removed on open | print-layout.component.ts, print-layout-store.service.ts |",
+          "| F2 | Segmented toggles (Text size, Text position, Fields, Landscape/Portrait) look clickable when not selected | print-layout.component.scss `.pl-segmented` |",
+          "| F10 | Delete on the canvas: selection bar trash, right-click \"Delete item\", Delete and Backspace keys | board-canvas.component.* |",
+          "", "- [x] A task that is done", "- [ ] A task that is not",
+        ].join("\n"));
+      }
       return text(args.rel.endsWith("session.ts") ? newText : `// ${args.rel}\n\nexport const value = 1;\n`);
     case "write_file": return null;
     case "worktree_diff":
