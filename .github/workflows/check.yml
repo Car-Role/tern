@@ -22,7 +22,7 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npm run check
-      - name: Front-end tests (file viewers: CSV, data trees, logs)
+      - name: Front-end tests (file viewers, database text)
         run: npm test
       - name: Git identity for the tests (they make commits in temporary repos)
         run: |
@@ -72,4 +72,4 @@ jobs:
           TERN_TEST_PG: localhost:5432:postgres:tern_test:postgres
           TERN_TEST_MSSQL: localhost:1433:sa:Tern_test_123:master
           TERN_TEST_REDIS: localhost:6379
-        run: cargo test db:: -- --nocapture
+        run: "cargo test db:: -- --nocapture"
