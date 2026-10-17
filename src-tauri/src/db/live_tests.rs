@@ -31,7 +31,13 @@ fn run<T>(f: impl std::future::Future<Output = T>) -> T {
     tauri::async_runtime::block_on(f)
 }
 
-/// The pool reads passwords from the keychain; tests pass them through `test`, which keeps no connection.
+/// The app reads passwords from the keychain. Tests have no keychain entry, so they open both the read-only
+/// and the write connection with the password first; later calls reuse them.
+async fn seed(pool: &Pool, c: &Conn, pw: &str) {
+    pool.get(c, false, Some(pw)).await.expect("read-only connection");
+    pool.get(c, true, Some(pw)).await.expect("write connection");
+}
+
 async fn q(pool: &Pool, c: &Conn, pw: &str, sql: &str, write: bool) -> Result<QueryResult, String> {
     let l = pool.get(c, write, Some(pw)).await?;
     drop(l);
@@ -46,6 +52,7 @@ fn postgres_live() {
     let t = format!("tern_test_{}", std::process::id());
     run(async {
         assert!(test(&pool, &c, Some(pw.clone())).await.unwrap().starts_with("PostgreSQL"));
+        seed(&pool, &c, &pw).await;
         let w = q(&pool, &c, &pw, &format!(
             "DROP TABLE IF EXISTS {t}; CREATE TABLE {t} (id serial PRIMARY KEY, name text NOT NULL, n numeric(10,2), at timestamptz, j jsonb);
              INSERT INTO {t} (name, n, at, j) VALUES ('Ada', 1.50, '2026-10-17 10:00+00', '{{\"a\":1}}'), ('Zoë ☕', NULL, NULL, NULL)"), true).await.unwrap();
@@ -86,6 +93,7 @@ fn mssql_live() {
     run(async {
         let v = test(&pool, &c, Some(pw.clone())).await.unwrap();
         assert!(v.contains("SQL Server"), "{v}");
+        seed(&pool, &c, &pw).await;
         q(&pool, &c, &pw, &format!(
             "IF OBJECT_ID('{t}') IS NOT NULL DROP TABLE {t};
              CREATE TABLE {t} (id int IDENTITY PRIMARY KEY, name nvarchar(50) NOT NULL, n decimal(10,2), at datetime2, g uniqueidentifier, ok bit);
