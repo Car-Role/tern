@@ -24,7 +24,8 @@ pub struct FileBytes {
 
 /// The type of a file from its first bytes, then its name.
 pub fn mime_of(bytes: &[u8], rel: &str) -> String {
-    if bytes.starts_with(b"%PDF") {
+    // The PDF header may follow up to 1 KB of other bytes. A file named .pdf without it is not a PDF.
+    if bytes[..bytes.len().min(1024)].windows(4).any(|w| w == b"%PDF") {
         return "application/pdf".into();
     }
     if bytes.len() >= 4 && bytes[..4] == [0, 0, 1, 0] {
@@ -43,7 +44,6 @@ pub fn mime_of(bytes: &[u8], rel: &str) -> String {
         "bmp" => "image/bmp",
         "ico" => "image/x-icon",
         "avif" => "image/avif",
-        "pdf" => "application/pdf",
         _ => "application/octet-stream",
     }
     .into()
@@ -167,6 +167,8 @@ mod tests {
     #[test]
     fn knows_file_types() {
         assert_eq!(mime_of(b"%PDF-1.7\n", "x.bin"), "application/pdf");
+        assert_eq!(mime_of(b"junk\r\n%PDF-1.4", "x.pdf"), "application/pdf");
+        assert_eq!(mime_of(b"hello, not a pdf", "notes.pdf"), "application/octet-stream");
         assert_eq!(mime_of(&[0x89, b'P', b'N', b'G', 0], "a.txt"), "image/png");
         assert_eq!(mime_of(b"<svg xmlns='http://www.w3.org/2000/svg'/>", "a.svg"), "image/svg+xml");
         assert_eq!(mime_of(&[0, 0, 1, 0, 1], "favicon.ico"), "image/x-icon");
