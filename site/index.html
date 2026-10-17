@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tern — review every repo your agents touch</title>
-  <meta name="description" content="Tern is a fast, keyboard-first app for reviewing many git repos at once: diffs, history, pull requests, CI, tickets, tasks, and terminals. Free for individuals and small teams, on Windows, macOS, and Linux.">
+  <title>Tern — review every project your agents touch</title>
+  <meta name="description" content="Tern is a fast, keyboard-first app for reviewing many git projects at once: what needs you, diffs, history, pull requests, CI, tickets, databases, tasks, and terminals. Free for individuals and small teams, on Windows, macOS, and Linux.">
   <meta property="og:title" content="Tern">
-  <meta property="og:description" content="A fast, keyboard-first app for reviewing many git repos at once. Built for working alongside coding agents.">
-  <meta property="og:image" content="https://car-role.github.io/tern/assets/review.png">
+  <meta property="og:description" content="A fast, keyboard-first app for reviewing many git projects at once. Built for working alongside coding agents.">
+  <meta property="og:image" content="https://car-role.github.io/tern/assets/home.png">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#161a21">
@@ -224,10 +224,10 @@
 
   <main id="top">
     <div class="wrap hero">
-      <h1>Review every repo your <em>agents</em> touch.</h1>
+      <h1>Review every project your <em>agents</em> touch.</h1>
       <p class="lede">
-        Tern is a fast, keyboard-first app for watching many git repos at once. Read diffs, check CI, pull and push,
-        and hand exact file paths back to your agents, without opening a single editor window.
+        Tern is a fast, keyboard-first app for watching many git projects at once. See what needs you, read diffs,
+        check CI, pull and push, and hand exact file paths back to your agents, without opening a single editor window.
       </p>
       <div class="ctas">
         <a class="btn primary" id="dl-main" href="https://github.com/Car-Role/tern/releases/latest">
@@ -238,7 +238,7 @@
       </div>
       <p class="fine"><span>Free for individuals and small teams</span><span>Windows, macOS, Linux</span><span>About a 2 MB download</span></p>
       <div class="window">
-        <img src="assets/review.png" width="1920" height="1200" alt="Tern showing a split diff of a changed file, with the project list on the left and the changed files in the middle">
+        <img src="assets/home.png" width="1920" height="1200" alt="Tern Home: cards for agents that are working, commits to push and pull, and tickets in progress, above a table of every project">
       </div>
     </div>
 
@@ -253,8 +253,8 @@
           <li>
             <span class="step">01</span>
             <h3>Watch</h3>
-            <p>Every repo and worktree in one list. Repos an agent is changing show <em>working</em>, and Tern tells you when they go quiet.</p>
-            <kbd>Alt</kbd> <kbd>↑</kbd> <kbd>↓</kbd>
+            <p>Home shows what needs you across every project and worktree. Projects an agent is changing show <em>working</em>, and Tern tells you when they go quiet.</p>
+            <kbd>Ctrl 0</kbd> <kbd>Alt</kbd> <kbd>↑</kbd> <kbd>↓</kbd>
           </li>
           <li>
             <span class="step">02</span>
@@ -282,15 +282,41 @@
       <div class="wrap">
         <div class="feature">
           <div class="copy">
+            <h3>Review without opening an editor</h3>
+            <p>Step through changed files with the arrow keys. Split or unified diffs fold away the lines that did not change.</p>
+            <ul>
+              <li>Jump between changes with <kbd>F7</kbd>, and wrap long lines</li>
+              <li>Stage, unstage, or discard single blocks of a change</li>
+              <li>Review everything a branch did since it left main</li>
+            </ul>
+          </div>
+          <img class="shot" src="assets/review.png" width="1920" height="1200" loading="lazy" alt="A split diff of a changed file, with the project's changes listed on the left">
+        </div>
+
+        <div class="feature flip">
+          <div class="copy">
             <h3>History that knows what you're missing</h3>
             <p>A commit graph with branches and tags, and the commits on the remote that you haven't pulled yet, right above your branch.</p>
             <ul>
               <li>Long runs of new commits fold into one row</li>
               <li>Review everything a pull would bring as one diff</li>
-              <li>Reloads on its own when a branch moves</li>
+              <li>Filter commits by message, author, or ID</li>
             </ul>
           </div>
-          <img class="shot" src="assets/history.png" width="1920" height="1200" loading="lazy" alt="The History tab with a commit graph and fifteen incoming commits folded above the local branch">
+          <img class="shot" src="assets/history.png" width="1920" height="1200" loading="lazy" alt="The History tab with a commit graph, and one commit's changes open in a split diff">
+        </div>
+
+        <div class="feature">
+          <div class="copy">
+            <h3>CI without the browser tab</h3>
+            <p>Pipeline runs from Azure DevOps and GitHub Actions, with the stage, job, and step that failed, and its error.</p>
+            <ul>
+              <li>Running pipelines refresh on their own</li>
+              <li>Tern tells you when one finishes, and Home lists failing ones</li>
+              <li>Copy the failing steps for an agent in one click</li>
+            </ul>
+          </div>
+          <img class="shot" src="assets/ci.png" width="1920" height="1200" loading="lazy" alt="A CI run showing a failed test step and a warning">
         </div>
 
         <div class="feature flip">
@@ -308,28 +334,41 @@
 
         <div class="feature">
           <div class="copy">
-            <h3>CI without the browser tab</h3>
-            <p>Pipeline runs from Azure DevOps and GitHub Actions, with the stage, job, and step that failed, and its error.</p>
+            <h3>Your databases, read-only by default</h3>
+            <p>SQLite, Postgres, SQL Server, and Redis. Browse tables or keys, run a query, and see the first 1,000 rows.</p>
             <ul>
-              <li>Running pipelines refresh on their own</li>
-              <li>The status bar tells you when one finishes</li>
-              <li>Copy the failing steps for an agent in one click</li>
+              <li>Each database refuses writes until you allow them</li>
+              <li>Passwords stay in your system keychain</li>
+              <li>Copy the schema or a result for an agent</li>
             </ul>
           </div>
-          <img class="shot" src="assets/ci.png" width="1920" height="1200" loading="lazy" alt="A CI run showing a failed test step and a warning">
+          <img class="shot" src="assets/data.png" width="1920" height="1200" loading="lazy" alt="The database view with a Postgres connection, its tables, a query, and the result rows">
         </div>
 
         <div class="feature flip">
           <div class="copy">
-            <h3>Every project at a glance</h3>
-            <p>Group repos into spaces like Work and Personal. See what changed, what's behind, and what's being worked on, across all of them.</p>
+            <h3>Views for more than code</h3>
+            <p>Files open in the view that fits them, and big ones stay fast.</p>
             <ul>
-              <li>Fetch, pull, or push many repos at once</li>
-              <li>Worktrees fold under their repo</li>
-              <li>Twelve themes, dark and light</li>
+              <li>CSV and TSV as a table; JSON, YAML, and TOML as a tree</li>
+              <li>Logs that follow the file as it grows, with errors marked</li>
+              <li>Images with before and after, PDFs, and Markdown as a page</li>
             </ul>
           </div>
-          <img class="shot" src="assets/overview.png" width="1920" height="1200" loading="lazy" alt="The overview table listing every project with its branch, changes, and activity">
+          <img class="shot" src="assets/views.png" width="1920" height="1200" loading="lazy" alt="A CSV file shown as a table with a fixed header and row numbers">
+        </div>
+
+        <div class="feature">
+          <div class="copy">
+            <h3>Calm, in dark or light</h3>
+            <p>One sidebar to go anywhere, one command bar, and the same parts on every screen. Group projects into spaces like Work and Personal.</p>
+            <ul>
+              <li>Twelve themes, dark and light, or follow your system</li>
+              <li>Fetch, pull, or push many projects at once</li>
+              <li>Worktrees fold under their project</li>
+            </ul>
+          </div>
+          <img class="shot" src="assets/home-light.png" width="1920" height="1200" loading="lazy" alt="Tern Home in the light theme">
         </div>
       </div>
     </section>
@@ -342,7 +381,7 @@
           <div><b>Pull requests</b><span>From GitHub and Azure DevOps, with the diff computed locally against the merge base.</span></div>
           <div><b>Real terminals</b><span>Tasks and shells run on pseudo-terminals, so prompts, arrow keys, and full-screen tools work.</span></div>
           <div><b>Tasks</b><span>Finds npm scripts, VS Code tasks, .NET, Cargo, Gradle, Make, and Docker Compose. Pin the ones you use.</span></div>
-          <div><b>Search</b><span>Code, file names, commits, branches, PRs, and issues, in one repo, a space, or every repo.</span></div>
+          <div><b>Search</b><span>Code, file names, commits, branches, pull requests, and issues, in one project, a space, or all of them.</span></div>
           <div><b>Branches and worktrees</b><span>Switch, create, and remove, or open a branch in a new worktree for an agent.</span></div>
           <div><b>Go to definition</b><span>Jump to a name's definition or every place it's used, without a language server.</span></div>
           <div><b>Markdown</b><span>Open <code>.md</code> files as a rendered page, from Tern or straight from your file manager.</span></div>
@@ -351,6 +390,7 @@
           <div><b>Databases</b><span>SQLite, Postgres, SQL Server, and Redis. Read-only by default, passwords in your keychain, schema copied for agents.</span></div>
           <div><b>Live logs</b><span>A log follows the file as it grows. Filter by text or regex, and show only errors or warnings.</span></div>
           <div><b>Quick edit</b><span>Fix a typo in place, save, and keep reviewing.</span></div>
+          <div><b>Notifications</b><span>Finished runs, failed actions, and agents that went quiet, in one list you can look back at.</span></div>
         </div>
       </div>
     </section>
@@ -361,12 +401,13 @@
         <p class="sub">Every action has a shortcut. Press <kbd>F1</kbd> in Tern for the full list.</p>
         <table class="keys">
           <tr><td><kbd>Ctrl K</kbd> <kbd>Ctrl P</kbd> <kbd>Ctrl Shift P</kbd></td><td>Go to a project, a file, or a command</td></tr>
-          <tr><td><kbd>Ctrl Shift F</kbd></td><td>Search across repos</td></tr>
+          <tr><td><kbd>Ctrl Shift F</kbd></td><td>Search across projects</td></tr>
+          <tr><td><kbd>Ctrl 0</kbd></td><td>Home: what needs you</td></tr>
           <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Step through changes; each one opens as you move</td></tr>
           <tr><td><kbd>Ctrl Shift C</kbd></td><td>Copy a path, path with lines, <code>@mention</code>, or diff</td></tr>
           <tr><td><kbd>S</kbd> <kbd>Ctrl Enter</kbd></td><td>Stage, then commit</td></tr>
           <tr><td><kbd>Ctrl B</kbd></td><td>Branches and worktrees</td></tr>
-          <tr><td><kbd>Ctrl Shift T</kbd></td><td>Your tickets</td></tr>
+          <tr><td><kbd>Ctrl Shift T</kbd> <kbd>Ctrl Shift D</kbd></td><td>Your tickets, your databases</td></tr>
           <tr><td><kbd>Ctrl `</kbd></td><td>A terminal in this project</td></tr>
           <tr><td><kbd>F12</kbd> <kbd>Shift F12</kbd></td><td>Go to definition, or find where it's used</td></tr>
         </table>
@@ -403,7 +444,7 @@
           <p class="sub" style="margin-bottom:20px">Tern is built with Tauri 2, Rust, Svelte, and CodeMirror. It uses your system's web view, so the app stays tiny.</p>
           <ul>
             <li>Starts in under a second; tabs load only when you open them.</li>
-            <li>Runs git so it never blocks an agent using the same repo.</li>
+            <li>Runs git so it never blocks an agent using the same project.</li>
             <li>No accounts, no cloud, no telemetry. Sign-in stays with <code>gh</code> and <code>az</code>.</li>
             <li>No plugins or language servers to set up.</li>
           </ul>

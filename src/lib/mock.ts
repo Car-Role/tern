@@ -89,8 +89,8 @@ let changes: Change[] = [
   { path: "src/lib/retry.ts", oldPath: null, kind: "untracked", staged: false, unstaged: true, mtime: now - 50 },
   { path: "src/components/Grid.svelte", oldPath: "src/components/Table.svelte", kind: "renamed", staged: true, unstaged: false, mtime: now - 3000 },
   { path: "docs/old-notes.md", oldPath: null, kind: "deleted", staged: false, unstaged: true, mtime: null },
-  { path: "qa/screenshot.png", oldPath: null, kind: "modified", staged: false, unstaged: true, mtime: now - 90 },
-  { path: "qa/new.png", oldPath: null, kind: "untracked", staged: false, unstaged: true, mtime: now - 95 },
+  { path: "samples/screenshot.png", oldPath: null, kind: "modified", staged: false, unstaged: true, mtime: now - 90 },
+  { path: "samples/new.png", oldPath: null, kind: "untracked", staged: false, unstaged: true, mtime: now - 95 },
 ];
 
 const shaOf = (i: number) => (((i + 1) * 2654435761) >>> 0).toString(16).padStart(8, "0").repeat(5).slice(0, 40);
@@ -226,7 +226,7 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     case "read_text": return qaReadText(String(args.rel));
     case "read_tail": return qaReadTail(String(args.rel), Number(args.offset));
     case "read_file":
-      if (String(args.rel).startsWith("qa/") && qaReadFile(String(args.rel))) return qaReadFile(String(args.rel));
+      if (String(args.rel).startsWith("samples/") && qaReadFile(String(args.rel))) return qaReadFile(String(args.rel));
       if (String(args.rel).endsWith("fetcher.ts")) {
         // A long file, so jumping to a line can be tested.
         const lines = Array.from({ length: 200 }, (_, i) => (i === 119 ? "export function fetcher(url: string) { return fetch(url); }" : `// filler line ${i + 1}`));

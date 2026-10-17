@@ -21,7 +21,7 @@
   <a href="LICENSE"><img alt="Business Source License 1.1" src="https://img.shields.io/badge/license-BSL%201.1-5fbf8b"></a>
 </p>
 
-![Tern reviewing a change in a split diff](site/assets/review.png)
+![Tern Home: what needs you across every project, then all projects in one table](site/assets/home.png)
 
 ## Why Tern
 
@@ -33,8 +33,11 @@ every action one keystroke away. It starts in under a second and stays out of yo
 
 ## What it does
 
-- **Every repo at a glance.** Tern finds the git repos under your folders and shows each one's branch,
-  changed files, and commits to pull or push. Worktrees that agents create fold under their repo.
+- **Home shows what needs you.** Agents that are working, changes ready to review, commits to push or pull,
+  failing CI, problems, and tickets in progress, across every project. Then every project in one table you can
+  sort and filter.
+- **Every project at a glance.** Tern finds the git repos under your folders and shows each one's branch,
+  changed files, and commits to pull or push. Worktrees that agents create fold under their project.
 - **Agent activity.** A repo shows *working* while its files keep changing, and Tern tells you when it goes quiet.
 - **Review.** Split or unified diffs, a commit graph, and a branch review that shows everything a branch
   did since it left `main`. Commits on the remote that you don't have yet show above your branch.
@@ -54,19 +57,27 @@ every action one keystroke away. It starts in under a second and stays out of yo
 - **Databases.** Look at SQLite, Postgres, SQL Server, and Redis: browse tables or keys, run queries, and copy the
   schema or results for an agent. Connections are read-only unless you allow writes, and passwords stay in your
   system keychain. A `.db` file in a repo opens right in the file view.
-- **Search everything.** Code, file names, commits, branches, PRs, and issues, in one repo, a space, or all repos.
-- **Spaces and themes.** Group repos into spaces like Work and Personal. Twelve themes, dark and light, or follow your system.
+- **Search everything.** Code, file names, commits, branches, pull requests, and issues, in one project, a space, or all of them.
+- **Calm, keyboard-first design.** One sidebar to go anywhere, a command bar (`Ctrl K`), and a shortcut for every action.
+  Group projects into spaces like Work and Personal. Twelve themes, dark and light, or follow your system.
 
 See [Everything Tern does](docs/features.md) for every screen, key, and menu, and the [guide](docs/guide.md) for more detail.
 
 <table>
   <tr>
-    <td><img src="site/assets/history.png" alt="History with a commit graph and incoming commits"></td>
-    <td><img src="site/assets/tickets.png" alt="Tickets assigned to you"></td>
+    <td><img src="site/assets/review.png" alt="Reviewing a change in a split diff"></td>
+    <td><img src="site/assets/history.png" alt="History with a commit graph and a commit open"></td>
   </tr>
   <tr>
     <td><img src="site/assets/ci.png" alt="A CI run with its failing step"></td>
-    <td><img src="site/assets/overview.png" alt="Every project at a glance"></td>
+    <td><img src="site/assets/tickets.png" alt="Tickets assigned to you"></td>
+  </tr>
+  <tr>
+    <td><img src="site/assets/data.png" alt="The database view: a Postgres table"></td>
+    <td><img src="site/assets/views.png" alt="A CSV file shown as a table"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="site/assets/home-light.png" alt="Home in the light theme"></td>
   </tr>
 </table>
 
