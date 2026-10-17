@@ -29,11 +29,17 @@
     ];
   });
 
+  // The highlighted row starts on the last-used format, so Enter repeats it until the arrows move.
+  let active = $state(-1);
+  const shown = $derived(active >= 0 ? active : Math.max(0, options.findIndex((o) => o.f === app.lastCopy)));
+
   function onKey(e: KeyboardEvent) {
     const k = e.key.toUpperCase();
     const hit = options.find((o) => o.key === k) ?? (e.key === "@" ? options[3] : undefined);
     if (hit) app.copy(hit.f);
-    else if (e.key === "Enter") app.copy(app.lastCopy);
+    else if (e.key === "ArrowDown") active = (shown + 1) % options.length;
+    else if (e.key === "ArrowUp") active = (shown - 1 + options.length) % options.length;
+    else if (e.key === "Enter") app.copy(active >= 0 ? options[active].f : app.lastCopy);
     else return;
     e.preventDefault();
     e.stopPropagation();
@@ -44,80 +50,72 @@
 
 <div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && (app.overlay = null)}>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="menu" role="dialog" aria-label="Copy for an agent" tabindex="0" bind:this={box} onkeydown={onKey}>
-    <p class="what">Copy <span class="mono">{target}</span> as</p>
-    {#each options as o}
-      <button class="opt" class:last={app.lastCopy === o.f} onclick={() => app.copy(o.f)}>
-        <kbd>{o.key}</kbd>
-        <span class="label">{o.label}</span>
-        <span class="preview mono">{o.preview}</span>
-      </button>
-    {/each}
-    <p class="foot faint"><kbd>Enter</kbd> repeats the last format. Select files with <kbd>Space</kbd> to copy many.</p>
+  <div class="dialog sm" role="dialog" aria-label="Copy for agent" tabindex="0" bind:this={box} onkeydown={onKey}>
+    <div class="dialog-head"><h2 class="what">Copy <span class="mono">{target}</span> as</h2></div>
+    <div class="dialog-body list" role="listbox" aria-label="Formats">
+      {#each options as o, i}
+        <button class="opt" role="option" aria-selected={i === shown} class:on={i === shown}
+          onmousemove={() => (active = i)} onclick={() => app.copy(o.f)}>
+          <kbd>{o.key}</kbd>
+          <span class="label">{o.label}</span>
+          <span class="preview mono">{o.preview}</span>
+          <span class="last-used">{app.lastCopy === o.f ? "last used" : ""}</span>
+        </button>
+      {/each}
+    </div>
+    <div class="dialog-foot">
+      <span class="hint"><kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd> copy the highlighted format. Select files with <kbd>Space</kbd> to copy many.</span>
+    </div>
   </div>
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.35);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding-top: 16vh;
-    z-index: 10;
-  }
-  .menu {
-    width: min(560px, calc(100vw - 32px));
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    padding: 8px;
-    outline: none;
-  }
   .what {
-    margin: 4px 8px 8px;
-    color: var(--muted);
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .what .mono {
-    color: var(--text);
+    font-size: var(--fs-md);
+    font-weight: 400;
+  }
+  .list {
+    padding-left: var(--s3);
+    padding-right: var(--s3);
+    padding-bottom: 0;
   }
   .opt {
     display: grid;
-    grid-template-columns: 26px 170px minmax(0, 1fr);
+    grid-template-columns: var(--h-ctl) 150px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 8px;
+    gap: var(--s3);
     width: 100%;
+    height: var(--h-row);
     text-align: left;
-    padding: 7px 8px;
+    padding: 0 var(--s3);
     border-radius: var(--radius);
   }
-  .opt:hover {
+  .opt.on {
     background: var(--raised);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
   }
-  .opt.last .label::after {
-    content: "last used";
-    margin-left: 8px;
-    font-size: 11px;
-    color: var(--amber);
+  .last-used {
+    font-size: var(--fs-xs);
+    color: var(--muted);
+    white-space: nowrap;
   }
   .opt kbd {
     justify-self: center;
     color: var(--text);
+  }
+  .label {
+    white-space: nowrap;
   }
   .preview {
     color: var(--faint);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .foot {
-    margin: 8px 8px 2px;
-    font-size: 11px;
   }
 </style>

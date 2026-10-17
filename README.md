@@ -57,7 +57,7 @@ every action one keystroke away. It starts in under a second and stays out of yo
 - **Search everything.** Code, file names, commits, branches, PRs, and issues, in one repo, a space, or all repos.
 - **Spaces and themes.** Group repos into spaces like Work and Personal. Twelve themes, dark and light, or follow your system.
 
-See the [guide](docs/guide.md) for every feature and shortcut.
+See [Everything Tern does](docs/features.md) for every screen, key, and menu, and the [guide](docs/guide.md) for more detail.
 
 <table>
   <tr>

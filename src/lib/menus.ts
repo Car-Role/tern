@@ -25,16 +25,20 @@ export function repoMenu(e: At, path: string) {
     item(s?.behind ? `Pull ${s.behind}…` : "Pull…", () => app.action(path, "pull")),
     item(s?.ahead ? `Push ${s.ahead}…` : "Push…", () => app.action(path, "push")),
     "sep",
-    item("Open a terminal here", () => app.openTerminal(path)),
+    item("Open a terminal here", () => app.openTerminal(path), { hint: "Ctrl `" }),
     item("Start Claude Code here", () => app.openTerminal(path, { agent: true })),
     item("Open an external terminal", () => app.open("terminal", path)),
-    item("Open in VS Code", () => app.open("editor", path)),
-    item("Show in File Explorer", () => app.open("explorer", path)),
+    item("Open in VS Code", () => app.open("editor", path), { hint: "Ctrl Shift E" }),
+    item("Show in folder", () => app.open("explorer", path)),
     "sep",
-    item("Branches…", () => {
-      app.select(path);
-      app.openBranches("branches");
-    }),
+    item(
+      "Branches…",
+      () => {
+        app.select(path);
+        app.openBranches("branches");
+      },
+      { hint: "Ctrl B" },
+    ),
     item("Worktrees…", () => {
       app.select(path);
       app.openBranches("worktrees");
@@ -48,7 +52,7 @@ export function repoMenu(e: At, path: string) {
           }),
         ]
       : []),
-    ...(repo && !repo.parent ? [item(repo.pinned ? "Unpin" : "Pin to top", () => app.togglePin(path))] : []),
+    ...(repo && !repo.parent ? [item(repo.pinned ? "Unpin" : "Pin", () => app.togglePin(path))] : []),
     item("Move to a space…", () => {
       app.moveTargets = [path];
       app.overlay = "move";
@@ -57,7 +61,7 @@ export function repoMenu(e: At, path: string) {
       ? item("Unhide its main repo", () => repo?.parent && app.unhide(repo.parent))
       : hidden
         ? item("Unhide", () => app.unhide(path))
-        : item("Hide", () => app.hide(path), { danger: true }),
+        : item("Hide", () => app.hide(path)),
   ];
   app.showMenu(e, repo?.name ?? baseName(path), items);
 }
@@ -83,7 +87,7 @@ export function bulkMenu(e: At, paths: string[]) {
       app.moveTargets = [...paths];
       app.overlay = "move";
     }),
-    anyHidden ? item("Unhide", () => app.bulkUnhide(paths)) : item(`Hide ${n}`, () => app.bulkHide(paths), { danger: true }),
+    anyHidden ? item("Unhide", () => app.bulkUnhide(paths)) : item(`Hide ${n}`, () => app.bulkHide(paths)),
     "sep",
     item("Clear the selection", () => app.clearRepoSel()),
   ];
@@ -133,11 +137,11 @@ export function fileMenu(e: At, rel: string, change?: Change) {
       app.openFile(rel);
       app.open("editor");
     }),
-    item("Show in File Explorer", () => {
+    item("Show in folder", () => {
       app.openFile(rel);
       app.open("explorer");
     }),
-    ...(web ? [item("Open on the web", () => openUrl(web))] : []),
+    ...(web ? [item("Open in browser", () => openUrl(web))] : []),
   ];
   app.showMenu(e, baseName(rel), items);
 }
@@ -155,10 +159,10 @@ export function commitMenu(e: At, c: Commit) {
     item(`Copy commit ID ${c.short}`, () => app.copyValue(c.short)),
     item("Copy the full commit ID", () => app.copyValue(c.sha)),
     item("Copy the message", () => app.copyValue(c.body ? `${c.subject}\n\n${c.body}` : c.subject, "the commit message")),
-    item("Copy for an agent", () =>
+    item("Copy for agent", () =>
       app.copyValue(`Commit ${c.sha} in ${repo}\nAuthor: ${c.author} <${c.email}>\n\n${c.subject}${c.body ? "\n\n" + c.body : ""}\n\nSee it with: git show ${c.short}`, `commit ${c.short} for an agent`),
     ),
-    ...(web ? [item("Open on the web", () => openUrl(web))] : []),
+    ...(web ? [item("Open in browser", () => openUrl(web))] : []),
   ];
   app.showMenu(e, `${c.short} ${c.subject}`, items);
 }
@@ -166,12 +170,12 @@ export function commitMenu(e: At, c: Commit) {
 export function prMenu(e: At, pr: PullRequest) {
   const items: MenuItem[] = [
     item("Review the changes", () => app.openPr(pr)),
-    item("Open in the browser", () => openUrl(pr.url)),
+    item("Open in browser", () => openUrl(pr.url)),
     "sep",
     item("Copy link", () => app.copyValue(pr.url)),
     item(`Copy #${pr.id}`, () => app.copyValue(`#${pr.id}`)),
     item(`Copy branch ${pr.source}`, () => app.copyValue(pr.source)),
-    item("Copy for an agent", () =>
+    item("Copy for agent", () =>
       app.copyValue(`Pull request #${pr.id}: ${pr.title}\n${pr.url}\nBranch ${pr.source} into ${pr.target}, by ${pr.author}.`, `#${pr.id} for an agent`),
     ),
   ];
@@ -181,7 +185,7 @@ export function prMenu(e: At, pr: PullRequest) {
 export function ciMenu(e: At, run: CiRun) {
   const items: MenuItem[] = [
     item("Show stages and jobs", () => app.openRun(run)),
-    item("Open in the browser", () => openUrl(run.url)),
+    item("Open in browser", () => openUrl(run.url)),
     "sep",
     item("Copy link", () => app.copyValue(run.url)),
     item(`Copy run number ${run.number}`, () => app.copyValue(run.number)),
@@ -223,12 +227,12 @@ export function sectionMenu(e: At, section: "staged" | "unstaged") {
 export function issueMenu(e: At, issue: Issue) {
   const items: MenuItem[] = [
     item("Read it here", () => app.openIssue(issue.number)),
-    item("Open in the browser", () => openUrl(issue.url)),
+    item("Open in browser", () => openUrl(issue.url)),
     "sep",
     item("Copy link", () => app.copyValue(issue.url)),
     item(`Copy #${issue.number}`, () => app.copyValue(`#${issue.number}`)),
     item("Copy the title", () => app.copyValue(issue.title)),
-    item("Copy for an agent", () => copyIssueForAgent(issue.number)),
+    item("Copy for agent", () => copyIssueForAgent(issue.number)),
   ];
   app.showMenu(e, `#${issue.number} ${issue.title}`, items);
 }
@@ -263,10 +267,10 @@ export function taskMenu(e: At, t: Task, custom: number | null) {
     item(last?.running ? "Show the output" : "Run", () => (last?.running ? app.showRun(last.id) : app.runTask(t))),
     ...(last ? [item("Restart", () => app.restartRun(last.id))] : []),
     ...(last?.running ? [item("Stop", () => app.stopRun(last.id), { danger: true })] : []),
-    item(app.isTaskPinned(repo, t.id) ? "Unpin" : "Pin to the top", () => app.toggleTaskPin(repo, t), { hint: "P" }),
+    item(app.isTaskPinned(repo, t.id) ? "Unpin" : "Pin", () => app.toggleTaskPin(repo, t), { hint: "P" }),
     "sep",
     item("Copy the command", () => app.copyValue(t.command)),
-    ...(last ? [item("Copy the last output for an agent", () => app.copyRunOutput(last.id))] : []),
+    ...(last ? [item("Copy the last output for agent", () => app.copyRunOutput(last.id))] : []),
     ...(t.source !== "custom" ? [item("Save a copy as my own command", () => app.saveCustomTask(repo, t.name, t.command, t.cwd))] : []),
     ...(custom !== null ? [item("Remove this saved command", () => app.removeCustomTask(repo, custom), { danger: true })] : []),
   ];

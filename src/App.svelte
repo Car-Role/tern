@@ -36,7 +36,7 @@
     }
   };
   let railW = $state(load("railW", 250));
-  let listW = $state(load("listW", 340));
+  let listW = $state(load("listW", 360));
 
   function drag(which: "rail" | "list") {
     return (e: PointerEvent) => {
@@ -60,6 +60,16 @@
     };
   }
 
+  /** Double-click a grip to go back to the default width. */
+  function resetWidth(which: "rail" | "list") {
+    if (which === "rail") railW = 250;
+    else listW = 360;
+    try {
+      localStorage.setItem("scout.railW", String(railW));
+      localStorage.setItem("scout.listW", String(listW));
+    } catch {}
+  }
+
   function onKey(e: KeyboardEvent) {
     if (isInsideTerminal(e.target)) {
       const cmd = commandFor(e);
@@ -75,9 +85,16 @@
 
     // The right-click menu handles its own keys.
     if (app.menu) return;
+    // Esc in a filled-in filter clears that filter only (the filter handles it).
+    if (e.key === "Escape" && e.target instanceof HTMLInputElement && e.target.value && !app.overlay) return;
     if (e.key === "Escape") {
-      if (app.overlay) app.overlay = null;
-      else if (app.editing) app.editing = false;
+      if (app.overlay) {
+        if (app.overlayGuard?.()) {
+          e.preventDefault();
+          return;
+        }
+        app.overlay = null;
+      } else if (app.editing) app.editing = false;
       else if (app.selected.length) app.selected = [];
       else if (app.repoSel.length) app.clearRepoSel();
       else if (app.review) app.closeReview();
@@ -124,22 +141,25 @@
 
 <svelte:window onkeydowncapture={onKey} oncontextmenu={(e) => e.preventDefault()} onmousedown={onMouse} onmouseup={onMouse} />
 
-<div class="shell" style:--rail-w="{railW}px" style:--list-w="{listW}px" class:overview={!app.current}>
+<div class="shell" style:--rail-w="{railW}px" style:--list-w="{listW}px" class:overview={!app.current || app.ticketsOpen || app.dataOpen} class:collapsed={app.sidebarCollapsed}>
   <TitleBar />
-  <Rail />
-  <div class="grip" role="separator" aria-orientation="vertical" onpointerdown={drag("rail")}></div>
+  {#if !app.sidebarCollapsed}
+    <Rail />
+    <div class="grip rail-grip" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" onpointerdown={drag("rail")} ondblclick={() => resetWidth("rail")}></div>
+  {/if}
   {#if app.ticketsOpen}
     <Tickets />
   {:else if app.dataOpen}
     <DataView />
   {:else if app.current}
     <ListPane />
-    <div class="grip" role="separator" aria-orientation="vertical" onpointerdown={drag("list")}></div>
+    <div class="grip" role="separator" aria-orientation="vertical" aria-label="Resize the list" onpointerdown={drag("list")} ondblclick={() => resetWidth("list")}></div>
     <Viewer />
   {:else}
     <Overview />
   {/if}
-  {#if app.panelOpen}<TaskPanel />{/if}
+  <!-- The panel shows when it has something in it, or when it was opened in this session. -->
+  {#if app.panelOpen && (app.runs.length || app.shells.length || (app.panelTouched && app.current))}<TaskPanel />{/if}
   <StatusBar />
 </div>
 
@@ -160,21 +180,34 @@
   .shell {
     display: grid;
     grid-template-columns: var(--rail-w) 1px var(--list-w) 1px minmax(0, 1fr);
-    grid-template-rows: 40px minmax(0, 1fr) auto 26px;
+    grid-template-rows: var(--h-title) minmax(0, 1fr) auto var(--h-status);
     height: 100%;
   }
-  /* The project list and its grip run down beside the task panel. */
+  /* The sidebar and its grip run down beside the task panel. */
   .shell > :global(.rail),
-  .shell > .grip:first-of-type {
+  .shell > .rail-grip {
     grid-row: 2 / 4;
   }
   .shell.overview {
     grid-template-columns: var(--rail-w) 1px minmax(0, 1fr);
   }
+  .shell.collapsed {
+    grid-template-columns: var(--list-w) 1px minmax(0, 1fr);
+  }
+  .shell.collapsed.overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* With the sidebar hidden, full-width screens start at the first column. */
+  .shell.collapsed > :global(.tickets),
+  .shell.collapsed > :global(.data),
+  .shell.collapsed > :global(.panel) {
+    grid-column: 1 / -1;
+  }
   .grip {
     background: var(--line);
     cursor: col-resize;
     position: relative;
+    z-index: 1;
   }
   .grip::after {
     content: "";
@@ -182,6 +215,7 @@
     inset: 0 -3px;
   }
   .grip:hover {
-    background: var(--line-strong);
+    background: var(--accent);
+    transition: background-color 120ms 200ms;
   }
 </style>

@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { app } from "../lib/store.svelte";
-  import { api } from "../lib/api";
+  import { api, inTauri } from "../lib/api";
   import { rank } from "../lib/fuzzy";
   import { bytes, agoIso } from "../lib/format";
   import type { RemoteRepo } from "../lib/types";
 
-  type Source = "azdo" | "github";
+  type Source = "azdo" | "github" | "url";
+
+  /** The path separator shown between the folder and the new name. */
+  const SEP = typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent) ? "\\" : "/";
 
   // Guess the Azure DevOps organization from repos already on this machine.
   const knownOrg = (() => {
@@ -30,7 +33,8 @@
     } catch {}
   };
 
-  let source = $state<Source>((saved("source", app.activeSpace?.id === "personal" ? "github" : knownOrg ? "azdo" : "github") as Source));
+  const savedSource = saved("source", app.activeSpace?.id === "personal" ? "github" : knownOrg ? "azdo" : "github");
+  let source = $state<Source>(savedSource === "azdo" || savedSource === "github" || savedSource === "url" ? savedSource : "github");
   let org = $state(saved("org", knownOrg));
   let owner = $state(saved("owner", ""));
   let projects = $state<string[]>([]);
@@ -41,13 +45,18 @@
   let filter = $state("");
   let active = $state(0);
   let filterEl: HTMLInputElement | undefined = $state();
+  let urlEl: HTMLInputElement | undefined = $state();
   let listEl: HTMLDivElement | undefined = $state();
 
   const roots = $derived([...(app.config?.roots ?? []), ...(app.activeSpace?.folders ?? [])].filter((v, i, a) => v && a.indexOf(v) === i));
   const defaultParent = () =>
-    roots.find((r) => (source === "azdo" ? /work/i.test(r) : /coding|projects|personal/i.test(r))) ?? roots[0] ?? "";
+    source === "url"
+      ? (roots[0] ?? "")
+      : (roots.find((r) => (source === "azdo" ? /work/i.test(r) : /coding|projects|personal/i.test(r))) ?? roots[0] ?? "");
   let parent = $state("");
   let name = $state("");
+  /** The folders offered in "Into": the scan folders, plus one picked with Browse. */
+  const parents = $derived(parent && !roots.includes(parent) ? [parent, ...roots] : roots);
 
   // A remote address in one form, so local repos can be matched with the list.
   const norm = (u: string) => decodeURIComponent(u.trim().toLowerCase()).replace(/^https:\/\/[^@/]+@/, "https://").replace(/\.git$/, "").replace(/\/$/, "");
@@ -61,9 +70,29 @@
     if (pick) name = pick.name;
   });
 
+  // Clone from a URL: https, ssh://, or scp-style user@host:path.
+  let url = $state("");
+  const urlOk = $derived(/^(https?:\/\/[^/\s]+\/\S+|ssh:\/\/\S+|git:\/\/\S+|[\w.-]+@[\w.-]+:\S+)$/i.test(url.trim()));
+  /** The folder name from a git URL: its last path segment without ".git". */
+  const nameFromUrl = (u: string) =>
+    u
+      .trim()
+      .replace(/[?#].*$/, "")
+      .replace(/[\\/]+$/, "")
+      .split(/[/:]/)
+      .pop()
+      ?.replace(/\.git$/i, "") ?? "";
+
+  $effect(() => {
+    if (source === "url") name = nameFromUrl(url);
+  });
+
+  const cloneUrl = $derived(source === "url" ? (urlOk ? url.trim() : "") : (pick?.url ?? ""));
+  const canClone = $derived(!!cloneUrl && !!parent && !!name.trim());
+
   async function loadProjects() {
     if (!org.trim()) return;
-    loading = "Loading projects…";
+    loading = "Loading Azure DevOps projects…";
     error = "";
     try {
       projects = await api.azdoProjects(org);
@@ -78,7 +107,7 @@
   }
 
   async function loadRepos() {
-    loading = "Loading repos…";
+    loading = "Loading the list…";
     error = "";
     try {
       if (source === "github") {
@@ -106,18 +135,33 @@
     }
   }
 
-  function switchTo(s: Source) {
+  async function switchTo(s: Source) {
     source = s;
     remember("source", s);
     repos = [];
-    parent = defaultParent();
+    error = "";
+    parent = saved("parent." + s, defaultParent());
     if (s === "azdo") loadProjects();
-    else loadRepos();
+    else if (s === "github") loadRepos();
+    else {
+      await tick();
+      urlEl?.focus();
+    }
+  }
+
+  async function browseParent() {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({ directory: true, multiple: false });
+      if (typeof picked === "string") parent = picked;
+    } catch (e) {
+      app.notify(`Could not open the folder picker: ${e}`, "err");
+    }
   }
 
   async function clone() {
-    if (!pick || !parent || !name.trim()) return;
-    if (await app.cloneRepo(pick.url, parent, name.trim())) {
+    if (!canClone) return;
+    if (await app.cloneRepo(cloneUrl, parent, name.trim())) {
       remember("parent." + source, parent);
       app.overlay = null;
     }
@@ -132,193 +176,171 @@
     tick().then(() => listEl?.querySelector(".on")?.scrollIntoView({ block: "nearest" }));
   }
 
+  /** Ctrl Enter clones from anywhere in the dialog. */
+  function onDialogKey(e: KeyboardEvent) {
+    if (e.key === "Enter" && e.ctrlKey && !e.defaultPrevented) {
+      e.preventDefault();
+      clone();
+    }
+  }
+
   onMount(() => {
     parent = saved("parent." + source, defaultParent());
     if (source === "azdo") loadProjects();
-    else loadRepos();
+    else if (source === "github") loadRepos();
+    else urlEl?.focus();
   });
 </script>
 
-<div class="backdrop fx-fade" role="presentation" onmousedown={(e) => e.target === e.currentTarget && (app.overlay = null)}>
-  <div class="dialog fx-fade" role="dialog" aria-label="Clone a repo">
-    <header>
-      <h2>Clone a repo</h2>
-      <div class="seg" role="tablist">
+<div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && (app.overlay = null)}>
+  <div class="dialog lg clone" role="dialog" aria-modal="true" aria-labelledby="clone-title" tabindex="-1" onkeydown={onDialogKey}>
+    <div class="dialog-head">
+      <h2 id="clone-title">Clone a project</h2>
+    </div>
+
+    <div class="dialog-body body">
+      <div class="seg source" role="tablist" aria-label="Clone from">
         <button role="tab" class:on={source === "azdo"} aria-selected={source === "azdo"} onclick={() => switchTo("azdo")}>Azure DevOps</button>
         <button role="tab" class:on={source === "github"} aria-selected={source === "github"} onclick={() => switchTo("github")}>GitHub</button>
+        <button role="tab" class:on={source === "url"} aria-selected={source === "url"} onclick={() => switchTo("url")}>URL</button>
       </div>
-    </header>
-
-    <div class="where">
-      {#if source === "azdo"}
-        <label>Organization <input bind:value={org} spellcheck="false" placeholder="your-org" onkeydown={(e) => e.key === "Enter" && loadProjects()} /></label>
-        <label>Project
-          <select bind:value={project} onchange={loadRepos} disabled={!projects.length}>
-            <option value="">All projects</option>
-            {#each projects as p}<option value={p}>{p}</option>{/each}
-          </select>
+      {#if source === "url"}
+        <label class="lbl">Git URL
+          <input class="field mono" bind:this={urlEl} bind:value={url} spellcheck="false" placeholder="https://github.com/owner/name.git or git@github.com:owner/name.git"
+            onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); clone(); } }} />
         </label>
+        {#if url.trim() && !urlOk}
+          <p class="warn">That does not look like a git URL. Use an https or ssh address.</p>
+        {:else}
+          <p class="help">Any git host works. The folder name comes from the end of the URL.</p>
+        {/if}
       {:else}
-        <label>Owner <input bind:value={owner} spellcheck="false" placeholder="you (leave empty) or an organization" onkeydown={(e) => e.key === "Enter" && loadRepos()} /></label>
-        <button class="btn" onclick={loadRepos}>Load</button>
+        <div class="where">
+          {#if source === "azdo"}
+            <label class="lbl row">Organization <input class="field org" bind:value={org} spellcheck="false" placeholder="your-org" onkeydown={(e) => e.key === "Enter" && loadProjects()} /></label>
+            <label class="lbl row">Project
+              <select class="field" bind:value={project} onchange={loadRepos} disabled={!projects.length}>
+                <option value="">All projects</option>
+                {#each projects as p}<option value={p}>{p}</option>{/each}
+              </select>
+            </label>
+          {:else}
+            <label class="lbl row">Owner <input class="field org" bind:value={owner} spellcheck="false" placeholder="you (leave empty) or an organization" onkeydown={(e) => e.key === "Enter" && loadRepos()} /></label>
+            <button class="btn" onclick={loadRepos}>Load</button>
+          {/if}
+        </div>
+
+        <input class="field filter" bind:this={filterEl} bind:value={filter} onkeydown={onKey} placeholder="Filter by name" spellcheck="false" aria-label="Filter by name" />
+
+        <div class="list" bind:this={listEl} role="listbox">
+          {#if loading}
+            <p class="note">{loading}</p>
+          {:else if error}
+            <div class="state inline">
+              <span class="state-title">Could not load the list</span>
+              <pre>{error}</pre>
+              <p>{source === "azdo" ? "Check that az is signed in: run az login in a terminal." : "Check that gh is signed in: run gh auth login in a terminal."}</p>
+              <div class="actions"><button class="btn sm" onclick={() => (source === "azdo" ? loadProjects() : loadRepos())}>Try again</button></div>
+            </div>
+          {:else if !shown.length}
+            <p class="note">{repos.length ? "Nothing matches." : "Nothing found."}</p>
+          {/if}
+          {#each shown as r, i (r.url)}
+            {@const have = cloned.has(norm(r.url))}
+            <button class="repo" class:on={i === active} role="option" aria-selected={i === active} onclick={() => (active = i)} ondblclick={clone}>
+              <span class="rname">{r.name}</span>
+              {#if have}<span class="have">on this machine</span>{/if}
+              {#if r.disabled}<span class="faint">{source === "github" ? "archived" : "disabled"}</span>{/if}
+              <span class="grow"></span>
+              <span class="faint">{r.group}</span>
+              {#if r.size}<span class="faint num">{bytes(r.size)}</span>{/if}
+              {#if r.updated}<span class="faint mono">{agoIso(r.updated)}</span>{/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      {#if source === "url" || pick}
+        <div class="dest">
+          <label class="lbl row">Into
+            <select class="field parent" bind:value={parent}>
+              {#each parents as root}<option value={root}>{root}</option>{/each}
+            </select>
+          </label>
+          {#if inTauri}<button class="btn" onclick={browseParent}>Browse…</button>{/if}
+          <span class="sep">{SEP}</span>
+          <input class="field mono name" bind:value={name} spellcheck="false" aria-label="Folder name" />
+        </div>
+        {#if !parents.length}<p class="help">Pick a folder to clone into.</p>{/if}
+        {#if source !== "url" && pick?.description}<p class="desc">{pick.description}</p>{/if}
       {/if}
     </div>
 
-    <input class="filter" bind:this={filterEl} bind:value={filter} onkeydown={onKey} placeholder="Filter repos" spellcheck="false" aria-label="Filter repos" />
-
-    <div class="list" bind:this={listEl} role="listbox">
-      {#if loading}
-        <p class="note">{loading}</p>
-      {:else if error}
-        <p class="note err">{error}</p>
-        <p class="note">{source === "azdo" ? "Check that az is signed in: run az login in a terminal." : "Check that gh is signed in: run gh auth login in a terminal."}</p>
-      {:else if !shown.length}
-        <p class="note">{repos.length ? "No repos match." : "No repos found."}</p>
-      {/if}
-      {#each shown as r, i (r.url)}
-        {@const have = cloned.has(norm(r.url))}
-        <button class="repo" class:on={i === active} role="option" aria-selected={i === active} onclick={() => (active = i)} ondblclick={clone}>
-          <span class="rname">{r.name}</span>
-          {#if have}<span class="have">on this machine</span>{/if}
-          {#if r.disabled}<span class="faint">{source === "github" ? "archived" : "disabled"}</span>{/if}
-          <span class="grow"></span>
-          <span class="faint">{r.group}</span>
-          {#if r.size}<span class="faint mono">{bytes(r.size)}</span>{/if}
-          {#if r.updated}<span class="faint mono">{agoIso(r.updated)}</span>{/if}
-        </button>
-      {/each}
-    </div>
-
-    {#if pick}
-      <div class="dest">
-        <label>Into
-          <select bind:value={parent}>
-            {#each roots as root}<option value={root}>{root}</option>{/each}
-          </select>
-        </label>
-        <span class="sep">\</span>
-        <input class="name" bind:value={name} spellcheck="false" aria-label="Folder name" />
-      </div>
-      {#if pick.description}<p class="desc muted">{pick.description}</p>{/if}
-    {/if}
-
-    <footer>
-      <span class="faint">↑ ↓ choose. <kbd>Ctrl Enter</kbd> clones.</span>
+    <div class="dialog-foot">
+      <span class="hint">{#if source !== "url"}<kbd>↑</kbd> <kbd>↓</kbd> choose · {/if}<kbd>Ctrl Enter</kbd> clones</span>
       <button class="btn" onclick={() => (app.overlay = null)}>Cancel</button>
-      <button class="btn primary" disabled={!pick || !parent || !name.trim()} onclick={clone}>
-        {pick ? `Clone ${pick.name}` : "Clone"}
+      <button class="btn primary" disabled={!canClone} onclick={clone}>
+        {source !== "url" && pick ? `Clone ${pick.name}` : source === "url" && name.trim() ? `Clone ${name.trim()}` : "Clone"}
       </button>
-    </footer>
+    </div>
   </div>
 </div>
 
 <style>
-  /* Opened with the mouse, now and then: a short entrance. Closing stays instant. */
-  .backdrop {
-    animation: tern-fade-in 150ms var(--ease-out);
+  .num {
+    font-variant-numeric: tabular-nums;
   }
-  .dialog {
-    animation: tern-dialog-in 200ms var(--ease-out);
+  .source {
+    align-self: flex-start;
   }
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.45);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: 9vh 16px 16px;
-    z-index: 10;
-  }
-  .dialog {
-    width: min(720px, 100%);
-    max-height: 82vh;
+  .body {
     display: flex;
     flex-direction: column;
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    padding: 16px 18px 14px;
+    gap: var(--s3);
+    flex: 1;
   }
-  header {
+  .lbl {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-  h2 {
-    margin: 0;
-    font-size: 16px;
-  }
-  .seg {
-    display: flex;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .seg button {
-    font-size: 12px;
-    padding: 3px 12px;
+    flex-direction: column;
+    gap: var(--s1);
+    font-size: var(--fs-sm);
     color: var(--muted);
   }
-  .seg button.on {
-    background: var(--raised);
-    color: var(--text);
+  .lbl.row {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--s3);
   }
   .where,
   .dest {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
+    gap: var(--s4);
   }
-  label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: var(--muted);
+  .dest {
+    gap: var(--s2);
+    margin-top: var(--s1);
   }
-  input,
-  select {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 4px 8px;
-    outline: none;
-    font: inherit;
-  }
-  input:focus,
-  select:focus {
-    border-color: var(--amber);
-  }
-  .where input {
-    width: 220px;
-  }
-  .filter {
-    width: 100%;
-    font-size: 14px;
-    padding: 7px 10px;
-    margin-bottom: 8px;
+  .org {
+    width: 240px;
   }
   .list {
     flex: 1;
     min-height: 160px;
     overflow-y: auto;
-    border: 1px solid var(--line);
+    background: var(--bg);
     border-radius: var(--radius);
-    padding: 4px;
+    padding: var(--s1);
   }
   .repo {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--s3);
     width: 100%;
+    height: var(--h-row);
     text-align: left;
-    padding: 5px 8px;
-    border-radius: 5px;
+    padding: 0 var(--s3);
+    border-radius: var(--r-sm);
     white-space: nowrap;
   }
   .repo:hover {
@@ -326,7 +348,7 @@
   }
   .repo.on {
     background: var(--raised);
-    box-shadow: inset 2px 0 0 var(--amber);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .rname {
     color: var(--text);
@@ -334,73 +356,35 @@
     text-overflow: ellipsis;
   }
   .have {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--add);
   }
-  .grow {
-    flex: 1;
-  }
   .repo .faint {
-    font-size: 11.5px;
+    font-size: var(--fs-xs);
   }
   .note {
-    margin: 8px;
+    margin: var(--s3);
     color: var(--muted);
   }
-  .note.err {
-    color: var(--del);
-    white-space: pre-wrap;
-    font-family: var(--mono);
-    font-size: 12px;
-    user-select: text;
-  }
-  .dest {
-    margin: 10px 0 0;
-  }
-  .dest select {
+  .parent {
     max-width: 380px;
   }
   .sep {
     color: var(--faint);
+    font-family: var(--mono);
   }
   .name {
     flex: 1;
-    font-family: var(--mono);
-    font-size: 12px;
   }
+  .help,
   .desc {
-    margin: 6px 0 0;
-    font-size: 12px;
-  }
-  footer {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 14px;
-  }
-  footer .faint {
-    flex: 1;
-    font-size: 11.5px;
-  }
-  .btn {
-    padding: 5px 14px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
+    margin: 0;
+    font-size: var(--fs-sm);
     color: var(--muted);
   }
-  .btn:hover:not(:disabled) {
-    color: var(--text);
-  }
-  .btn.primary {
-    background: var(--amber);
-    border-color: var(--amber);
-    color: var(--on-accent);
-    font-weight: 600;
-  }
-  .btn.primary:disabled {
-    background: var(--raised);
-    border-color: var(--line);
-    color: var(--faint);
-    cursor: default;
+  .warn {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--del);
   }
 </style>

@@ -7,6 +7,7 @@
   import { formatPaths, baseName, dirName } from "../lib/format";
   import type { RepoEntry, Task } from "../lib/types";
   import { THEMES } from "../lib/themes";
+  import { hover } from "../lib/hover";
 
   type Item =
     | { kind: "project"; id: string; label: string; detail: string; repo: RepoEntry; hits: number[] }
@@ -186,16 +187,21 @@
 </script>
 
 <div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && (app.overlay = null)}>
-  <div class="palette" role="dialog" aria-label="Find">
-    <div class="modes" role="tablist">
-      {#each modes as m}
-        <button role="tab" class:on={mode === m.id} aria-selected={mode === m.id} onclick={() => { app.paletteMode = m.id; input?.focus(); }}>
-          {m.label}
-        </button>
-      {/each}
-      <span class="tabhint faint"><kbd>Tab</kbd> switch</span>
+  <div class="dialog palette" role="dialog" aria-modal="true" aria-label="Go to or run">
+    <div class="head">
+      <div class="tabs" role="tablist">
+        {#each modes as m}
+          <button role="tab" use:hover={() => ({ title: m.label, hint: m.keys })} class:on={mode === m.id} aria-selected={mode === m.id} onclick={() => { app.paletteMode = m.id; input?.focus(); }}>
+            {m.label}
+          </button>
+        {/each}
+      </div>
+      <span class="grow"></span>
+      <span class="hint"><kbd>Tab</kbd> switch</span>
     </div>
-    <input bind:this={input} bind:value={query} onkeydown={onKey} {placeholder} spellcheck="false" aria-label={placeholder} />
+    <div class="query">
+      <input class="field" bind:this={input} bind:value={query} onkeydown={onKey} {placeholder} spellcheck="false" aria-label={placeholder} />
+    </div>
     <div class="results" bind:this={listEl} role="listbox">
       {#if (mode === "files" || mode === "tasks") && !app.current}
         <p class="empty">Open a project first. Press <kbd>Tab</kbd> to find a project.</p>
@@ -215,86 +221,62 @@
         </button>
       {/each}
     </div>
-    <footer class="faint">
-      <span><kbd>Enter</kbd> open</span>
-      {#if mode === "files"}<span><kbd>Shift Enter</kbd> copy as @ mention</span>{/if}
-      {#if mode === "projects"}<span><kbd>Shift Enter</kbd> copy path</span>{/if}
-      <span><kbd>Esc</kbd> close</span>
-    </footer>
+    <div class="dialog-foot foot">
+      <span class="hint"><kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open{#if mode === "files"} · <kbd>Shift Enter</kbd> copy as @ mention{/if}{#if mode === "projects"} · <kbd>Shift Enter</kbd> copy path{/if} · <kbd>Esc</kbd> close</span>
+    </div>
   </div>
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.45);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding-top: 12vh;
-    z-index: 10;
-  }
   .palette {
-    width: min(640px, calc(100vw - 32px));
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    width: min(640px, 100%);
     max-height: 70vh;
   }
-  .modes {
+  .head {
     display: flex;
-    gap: 2px;
-    padding: 8px 10px 0;
-    align-items: center;
+    align-items: stretch;
+    gap: var(--s3);
+    height: 34px;
+    padding: 0 var(--s4);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
   }
-  .modes button {
-    padding: 3px 9px;
-    border-radius: var(--radius);
-    color: var(--muted);
-    font-size: 12px;
+  .head .hint {
+    align-self: center;
+    font-size: var(--fs-xs);
+    color: var(--faint);
   }
-  .modes button.on {
-    background: var(--raised);
-    color: var(--text);
+  .query {
+    display: flex;
+    padding: var(--s3) var(--s4);
+    flex-shrink: 0;
   }
-  .tabhint {
-    margin-left: auto;
-    font-size: 11px;
-  }
-  input {
-    margin: 8px 10px;
-    padding: 8px 10px;
-    font-size: 15px;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    outline: none;
-  }
-  input:focus {
-    border-color: var(--amber);
+  /* The palette's one input is its whole purpose, so it is a bar-height field. */
+  .query .field {
+    flex: 1;
+    height: var(--h-bar);
+    padding: 0 var(--s4);
+    font-size: var(--fs-lg);
   }
   .results {
     overflow-y: auto;
-    padding: 0 6px 6px;
+    min-height: 0;
+    padding: 0 var(--s2) var(--s2);
   }
   .item {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
+    align-items: center;
+    gap: var(--s3);
     width: 100%;
+    height: var(--h-row);
     text-align: left;
-    padding: 6px 10px;
+    padding: 0 var(--s3);
     border-radius: var(--radius);
     white-space: nowrap;
   }
   .item.on {
     background: var(--raised);
-    box-shadow: inset 2px 0 0 var(--amber);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .label {
     color: var(--text);
@@ -316,19 +298,15 @@
   }
   mark {
     background: none;
-    color: var(--amber);
+    color: var(--accent);
     font-weight: 650;
   }
   .empty {
     color: var(--muted);
-    padding: 10px;
+    padding: var(--s3);
     margin: 0;
   }
-  footer {
-    display: flex;
-    gap: 14px;
-    padding: 7px 12px;
-    border-top: 1px solid var(--line);
-    font-size: 11px;
+  .foot {
+    flex-shrink: 0;
   }
 </style>

@@ -102,6 +102,8 @@ export type ConfirmRequest = {
   listLabel?: string;
   warnings?: string[];
   confirm: string;
+  /** Destructive (discard, drop, delete, remove): the main button is red. */
+  danger?: boolean;
   /** False when the action cannot work (for example, nothing to push). */
   allowed?: boolean;
   resolve: (ok: boolean) => void;
@@ -173,6 +175,15 @@ class Store {
 
   busy = $state<Record<string, GitAction>>({});
   toast = $state<{ text: string; kind: "ok" | "err" | "info"; id: number } | null>(null);
+  /** Every message Tern showed this session, newest first, for the notification list. */
+  notices = $state<{ id: number; text: string; kind: "ok" | "err" | "info"; at: number; repo: string | null }[]>([]);
+  /** When the notification list was last opened. Newer messages count as unread. */
+  noticesSeen = $state(Date.now());
+  noticesOpen = $state(false);
+  /** An open overlay can return true to stop Esc from closing it (for example, to ask about unsaved changes). */
+  overlayGuard: (() => boolean) | null = null;
+  /** The sidebar is folded away (Ctrl \). */
+  sidebarCollapsed = $state(saved("sidebar") === "0");
   overlay = $state<Overlay>(null);
   paletteMode = $state<PaletteMode>("projects");
   lastCopy = $state<CopyFormat>((saved("lastCopy") as CopyFormat) || "relative");
@@ -724,7 +735,11 @@ class Store {
     this.notify(`Copied the last ${Math.min(lines, this.term(id).lineCount)} lines of ${r.name}`, "ok");
   }
 
+  /** True once the panel was opened in this session. An empty panel is not brought back from last time. */
+  panelTouched = $state(false);
+
   setPanel(open: boolean) {
+    if (open) this.panelTouched = true;
     this.panelOpen = open;
     save("panelOpen", open ? "1" : "0");
   }
@@ -1083,6 +1098,9 @@ class Store {
     });
     items.sort((a, b) => b.changed.localeCompare(a.changed));
     this.tickets = { loading: false, items, errors, at: Date.now() };
+    // The ticket chosen last time: read its details too, so the right side is not empty.
+    const chosen = items.find((t) => t.key === this.ticketSel);
+    if (chosen && !this.ticketDetails[chosen.key]) this.loadTicketDetail(chosen);
     if (!this.ticketSel || !items.some((t) => t.key === this.ticketSel)) this.selectTicket(items[0]?.key ?? null);
   }
 
@@ -1251,6 +1269,9 @@ class Store {
     this.select(list[next].path);
   }
 
+  /** The open item per project and tab, so switching tabs brings back what each one showed. */
+  private tabViews: Record<string, View | null> = {};
+
   setTab(tab: Tab) {
     if (this.current && !this.visibleTabs.includes(tab)) {
       const label = { changes: "Changes", files: "Files", prs: "Pull requests", issues: "Issues", history: "History", ci: "CI", tasks: "Tasks" }[tab];
@@ -1258,6 +1279,12 @@ class Store {
       return;
     }
     if (tab !== this.tab || this.review) this.remember();
+    // Each tab keeps its own open item, so the viewer always matches the list on screen.
+    if (tab !== this.tab && this.current) {
+      this.tabViews[`${this.current}|${this.tab}`] = this.view;
+      const back = this.tabViews[`${this.current}|${tab}`] ?? null;
+      this.view = back && back.repo === this.current ? back : null;
+    }
     this.tab = tab;
     this.review = null;
     this.selected = [];
@@ -1669,6 +1696,7 @@ class Store {
         ? "Its commits are already in the base branch, so nothing is lost. The remote branch is not touched."
         : "Git deletes it only if its commits are merged somewhere. If they are not, git refuses and nothing changes. The remote branch is not touched.",
       confirm: "Delete branch",
+      danger: true,
     });
     if (!ok) return false;
     try {
@@ -1719,6 +1747,7 @@ class Store {
       body: `The folder ${path} goes away. The branch and its commits stay in ${baseName(main)}.`,
       warnings,
       confirm: changes || broken ? "Remove, and lose uncommitted work" : "Remove worktree",
+      danger: true,
     });
     if (!ok) return false;
     const running = this.runs.filter((r) => r.repo === path && r.running);
@@ -1894,7 +1923,7 @@ class Store {
   async bulkFetch(paths: string[]) {
     const withRemote = paths.filter((p) => this.sums[p]?.remote);
     if (!withRemote.length) return this.notify("None of these projects has a remote.", "info");
-    this.notify(`Fetching ${withRemote.length} projectsâ€¦`, "info");
+    this.notify(`Fetching ${withRemote.length} projects…`, "info");
     const failed = await this.pool(withRemote, (p) => this.action(p, "fetch", true));
     this.report("Fetched", withRemote.length, failed);
   }
@@ -2100,6 +2129,7 @@ class Store {
         title: `Discard this change in ${baseName(cur.rel)}?`,
         body: `${h.added} added and ${h.removed} removed ${h.added + h.removed === 1 ? "line goes" : "lines go"} back to how the last commit has them. The rest of the file stays as it is. You can undo this from the status bar for a few minutes.`,
         confirm: "Discard change",
+        danger: true,
       });
       if (!ok) return;
     }
@@ -2275,6 +2305,7 @@ class Store {
       list: list.slice(0, 40).map((c) => ({ name: c.path, detail: c.kind === "untracked" ? "new file, to the Recycle Bin" : c.kind })),
       listLabel: n > 40 ? `First 40 of ${n} files` : "Files",
       confirm: `Discard ${n === 1 ? "it" : `${n} files`}`,
+      danger: true,
     });
     if (!ok) return;
     try {
@@ -2345,6 +2376,7 @@ class Store {
       title: `Drop the stash "${st.message}"?`,
       body: `It holds ${n} ${n === 1 ? "file" : "files"} from ${st.branch || "a detached HEAD"}. Tern cannot bring a dropped stash back.`,
       confirm: "Drop stash",
+      danger: true,
     });
     if (!ok) return;
     try {
@@ -2496,8 +2528,37 @@ class Store {
 
   notify(text: string, kind: "ok" | "err" | "info" = "info") {
     clearTimeout(this.toastTimer);
-    this.toast = { text, kind, id: Date.now() };
+    const id = Date.now() + Math.random();
+    this.toast = { text, kind, id };
     this.toastTimer = setTimeout(() => (this.toast = null), kind === "err" ? 7000 : 2600);
+    this.notices = [{ id, text, kind, at: Date.now(), repo: this.current }, ...this.notices].slice(0, 200);
+  }
+
+  get unreadNotices() {
+    return this.notices.filter((n) => n.at > this.noticesSeen && n.kind !== "info").length;
+  }
+
+  toggleNotices(open = !this.noticesOpen) {
+    this.noticesOpen = open;
+    if (open) this.noticesSeen = Date.now();
+  }
+
+  clearNotices() {
+    this.notices = [];
+    this.noticesSeen = Date.now();
+  }
+
+  toggleSidebar(open = this.sidebarCollapsed) {
+    this.sidebarCollapsed = !open;
+    save("sidebar", open ? "1" : "0");
+  }
+
+  /** Opens Settings, on one section when given (appearance, spaces, folders, projects, updates, advanced). */
+  openSettings(section?: string) {
+    try {
+      if (section) localStorage.setItem("scout.settingsSection", section);
+    } catch {}
+    this.overlay = "settings";
   }
 }
 

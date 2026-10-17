@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { app } from "../lib/store.svelte";
-  import { api, openUrl } from "../lib/api";
+  import { api, inTauri, openUrl } from "../lib/api";
   import type { Config, TabId } from "../lib/types";
   import { ALL_TABS } from "../lib/store.svelte";
   import { THEMES } from "../lib/themes";
+  import Icon from "./Icon.svelte";
 
   const tabNames: Record<TabId, string> = {
     changes: "Changes", files: "Files", prs: "Pull requests", issues: "Issues", history: "History", ci: "CI", tasks: "Tasks",
@@ -72,6 +73,7 @@
   }
 
   async function save() {
+    confirmingClose = false;
     saving = true;
     const snap = $state.snapshot(draft);
     for (const sp of snap.spaces) {
@@ -81,6 +83,7 @@
     }
     try {
       await app.saveConfig(snap);
+      saved = true;
       app.overlay = null;
       app.notify("Settings saved", "ok");
     } catch (e) {
@@ -89,311 +92,433 @@
       saving = false;
     }
   }
+
+  // Sections: one shows at a time, picked in the nav on the left.
+  type SectionId = "appearance" | "spaces" | "folders" | "projects" | "updates" | "advanced";
+  const sections: { id: SectionId; label: string }[] = [
+    { id: "appearance", label: "Appearance" },
+    { id: "spaces", label: "Spaces" },
+    { id: "folders", label: "Folders" },
+    { id: "projects", label: "Projects" },
+    { id: "updates", label: "Updates" },
+    { id: "advanced", label: "Advanced" },
+  ];
+
+  /** Another screen can ask Settings to open on a section by setting this key just before opening it. */
+  function initialSection(): SectionId {
+    try {
+      const want = localStorage.getItem("scout.settingsSection");
+      localStorage.removeItem("scout.settingsSection");
+      const hit = sections.find((x) => x.id === want);
+      if (hit) return hit.id;
+    } catch {
+      /* Storage can be blocked. The first section is fine. */
+    }
+    return "appearance";
+  }
+  let section = $state<SectionId>(initialSection());
+  let content: HTMLDivElement | undefined = $state();
+
+  function show(id: SectionId) {
+    section = id;
+    content?.scrollTo({ top: 0 });
+  }
+
+  // The theme previews at once. Save keeps it; Cancel puts the old one back.
+  const startTheme = app.theme;
+  const startDraft = JSON.stringify($state.snapshot(draft));
+  const dirty = $derived(app.theme !== startTheme || JSON.stringify($state.snapshot(draft)) !== startDraft);
+  let saved = false;
+  let confirmingClose = $state(false);
+
+  /** Closes, or first asks to discard unsaved changes. */
+  function requestClose() {
+    if (dirty && !confirmingClose) {
+      confirmingClose = true;
+      return;
+    }
+    discard();
+  }
+
+  function discard() {
+    confirmingClose = false;
+    app.overlay = null;
+  }
+
+  // Lets the shell ask before Esc closes the dialog. It takes effect once the store has `overlayGuard`.
+  const guarded = app as typeof app & { overlayGuard?: (() => boolean) | null };
+  guarded.overlayGuard = () => {
+    if (!dirty || confirmingClose) return false;
+    confirmingClose = true;
+    return true;
+  };
+
+  onDestroy(() => {
+    guarded.overlayGuard = null;
+    if (!saved && app.theme !== startTheme) app.setTheme(startTheme);
+  });
+
+  async function browse(list: "roots" | "extra") {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({ directory: true, multiple: false });
+      if (typeof picked === "string") add(list, picked);
+    } catch (e) {
+      app.notify(`Could not open the folder picker: ${e}`, "err");
+    }
+  }
+
+  function onKey(e: KeyboardEvent) {
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && e.code === "KeyS") {
+      e.preventDefault();
+      if (!saving) save();
+    }
+  }
 </script>
 
-<div class="backdrop fx-fade" role="presentation" onmousedown={(e) => e.target === e.currentTarget && (app.overlay = null)}>
-  <div class="settings fx-fade" role="dialog" aria-label="Settings">
-    <h2>Settings</h2>
+<div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && requestClose()}>
+  <div class="dialog xl settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" onkeydown={onKey}>
+    <div class="dialog-head">
+      <h2 id="settings-title">Settings</h2>
+    </div>
 
-    <section>
-      <h3>Theme</h3>
-      <p class="hint">Changes at once. It is saved on this computer.</p>
-      <div class="themes" role="radiogroup" aria-label="Theme">
-        {#each THEMES as t}
-          <button class="theme" class:on={app.theme === t.id} role="radio" aria-checked={app.theme === t.id} onclick={() => app.setTheme(t.id)}>
-            <span class="preview" style:background={t.swatch[0]}>
-              <span class="bar" style:background={t.swatch[1]}></span>
-              <span class="dots">
-                {#each t.swatch.slice(2) as c}<i style:background={c}></i>{/each}
-              </span>
-            </span>
-            <span class="tname">{t.name}</span>
-            <span class="tnote">{t.note}</span>
+    <div class="layout">
+      <nav class="nav" aria-label="Settings sections">
+        {#each sections as x}
+          <button class="navitem" class:on={section === x.id} aria-current={section === x.id ? "page" : undefined} onclick={() => show(x.id)}>
+            <span>{x.label}</span>
+            {#if x.id === "spaces" && draft.spaces.length}<span class="badge">{draft.spaces.length}</span>{/if}
+            {#if x.id === "folders" && draft.roots.length + draft.extra.length}<span class="badge">{draft.roots.length + draft.extra.length}</span>{/if}
+            {#if x.id === "updates" && app.update}<span class="badge accent">1</span>{/if}
           </button>
         {/each}
-      </div>
-    </section>
+      </nav>
 
-    <section>
-      <h3>Spaces</h3>
-      <p class="hint">
-        A space shows only its own projects. Folder rules are checked first, then remote rules, top to bottom.
-        The number is the <kbd>Ctrl Alt</kbd> shortcut for each space.
-      </p>
-      {#each draft.spaces as sp, i (sp.id)}
-        <div class="space" style:--c={sp.color}>
-          <div class="shead">
-            <kbd>{i + 1}</kbd>
-            <input class="sname" bind:value={sp.name} aria-label="Space name" />
-            <div class="colors" role="radiogroup" aria-label="Color">
-              {#each colors as c}
-                <button
-                  class="color"
-                  class:on={sp.color === c}
-                  style:background={c}
-                  role="radio"
-                  aria-checked={sp.color === c}
-                  aria-label="Color {c}"
-                  onclick={() => (sp.color = c)}
-                ></button>
+      <div class="content" bind:this={content}>
+        {#if section === "appearance"}
+          <section>
+            <h3>Theme</h3>
+            <p class="hint">Changes at once so you can see it. Save keeps it, Cancel puts the old one back.</p>
+            <div class="themes" role="radiogroup" aria-label="Theme">
+              {#each THEMES as t}
+                <button class="theme" class:on={app.theme === t.id} role="radio" aria-checked={app.theme === t.id} onclick={() => app.setTheme(t.id)}>
+                  <span class="preview" style:background={t.swatch[0]}>
+                    <span class="bar" style:background={t.swatch[1]}></span>
+                    <span class="dots">
+                      {#each t.swatch.slice(2) as c}<i style:background={c}></i>{/each}
+                    </span>
+                  </span>
+                  <span class="tname">{t.name}</span>
+                  <span class="tnote">{t.note}</span>
+                </button>
               {/each}
             </div>
-            <span class="grow"></span>
-            <button class="mini" onclick={() => moveSpace(i, -1)} disabled={i === 0} aria-label="Move up">↑</button>
-            <button class="mini" onclick={() => moveSpace(i, 1)} disabled={i === draft.spaces.length - 1} aria-label="Move down">↓</button>
-            <button class="mini danger" onclick={() => removeSpace(sp.id)}>Remove</button>
-          </div>
-          <div class="rules">
-            <label>
-              <span>Remote contains <span class="faint">(one per line)</span></span>
-              <textarea
-                rows="2"
-                spellcheck="false"
-                placeholder="dev.azure.com/your-org"
-                bind:value={() => sp.remotes.join("\n"), (v) => (sp.remotes = lines(v))}
-              ></textarea>
-            </label>
-            <label>
-              <span>Folder starts with <span class="faint">(one per line)</span></span>
-              <textarea
-                rows="2"
-                spellcheck="false"
-                placeholder="C:\Work"
-                bind:value={() => sp.folders.join("\n"), (v) => (sp.folders = lines(v))}
-              ></textarea>
-            </label>
-          </div>
-          <div class="tabs-row">
-            <span>Tabs</span>
-            {#each ALL_TABS as t}
-              {@const on = !sp.tabs.length || sp.tabs.includes(t)}
-              <button class="tabpill" class:on onclick={() => toggleTab(sp, t)} aria-pressed={on}>{tabNames[t]}</button>
+          </section>
+        {:else if section === "spaces"}
+          <section>
+            <h3>Spaces</h3>
+            <p class="hint">
+              A space shows only its own projects. Folder rules are checked first, then remote rules, top to bottom.
+              The number is the <kbd>Ctrl Alt</kbd> shortcut for each space.
+            </p>
+            {#if !draft.spaces.length}
+              <p class="none">No spaces yet. Every project shows in one list.</p>
+            {/if}
+            {#each draft.spaces as sp, i (sp.id)}
+              <div class="space" style:--c={sp.color}>
+                <div class="shead">
+                  <kbd>{i + 1}</kbd>
+                  <input class="field sname" bind:value={sp.name} aria-label="Space name" />
+                  <div class="colors" role="radiogroup" aria-label="Color">
+                    {#each colors as c}
+                      <button
+                        class="color"
+                        class:on={sp.color === c}
+                        style:background={c}
+                        role="radio"
+                        aria-checked={sp.color === c}
+                        aria-label="Color {c}"
+                        onclick={() => (sp.color = c)}
+                      ></button>
+                    {/each}
+                  </div>
+                  <span class="grow"></span>
+                  <button class="icon-btn sm" onclick={() => moveSpace(i, -1)} disabled={i === 0} aria-label="Move up">↑</button>
+                  <button class="icon-btn sm" onclick={() => moveSpace(i, 1)} disabled={i === draft.spaces.length - 1} aria-label="Move down">↓</button>
+                  <button class="btn ghost sm danger" onclick={() => removeSpace(sp.id)}>Remove</button>
+                </div>
+                <div class="rules">
+                  <label>
+                    <span>Remote contains <span class="faint">(one per line)</span></span>
+                    <textarea
+                      class="field mono"
+                      rows="2"
+                      spellcheck="false"
+                      placeholder="dev.azure.com/your-org"
+                      bind:value={() => sp.remotes.join("\n"), (v) => (sp.remotes = lines(v))}
+                    ></textarea>
+                  </label>
+                  <label>
+                    <span>Folder starts with <span class="faint">(one per line)</span></span>
+                    <textarea
+                      class="field mono"
+                      rows="2"
+                      spellcheck="false"
+                      placeholder="C:\Work"
+                      bind:value={() => sp.folders.join("\n"), (v) => (sp.folders = lines(v))}
+                    ></textarea>
+                  </label>
+                </div>
+                <div class="tabs-row">
+                  <span>Tabs</span>
+                  {#each ALL_TABS as t}
+                    {@const on = !sp.tabs.length || sp.tabs.includes(t)}
+                    <button class="btn sm tabtoggle" class:on class:ghost={!on} onclick={() => toggleTab(sp, t)} aria-pressed={on}>
+                      {#if on}<Icon name="check" size={12} stroke={2} />{/if}{tabNames[t]}
+                    </button>
+                  {/each}
+                </div>
+                <label class="check default">
+                  <input type="radio" name="default-space" checked={draft.defaultSpace === sp.id} onchange={() => (draft.defaultSpace = sp.id)} />
+                  Also put projects that match no rule here
+                </label>
+              </div>
             {/each}
-          </div>
-          <label class="default">
-            <input type="radio" name="default-space" checked={draft.defaultSpace === sp.id} onchange={() => (draft.defaultSpace = sp.id)} />
-            Also put projects that match no rule here
-          </label>
-        </div>
-      {/each}
-      <div class="srow">
-        <button class="addspace" onclick={addSpace}>Add a space</button>
-        {#if draft.defaultSpace}
-          <button class="mini" onclick={() => (draft.defaultSpace = null)}>Leave unmatched projects out of every space</button>
-        {/if}
-      </div>
-      {#if assigned.length}
-        <p class="hint sub">Moved by hand (these win over the rules):</p>
-        {#each assigned as [path, id]}
-          <div class="item">
-            <span class="mono">{path} <span class="faint">in {draft.spaces.find((x) => x.id === id)?.name ?? id}</span></span>
-            <button onclick={() => { const { [path]: _, ...rest } = draft.assign; draft.assign = rest; }}>Use rules</button>
-          </div>
-        {/each}
-      {/if}
-    </section>
-
-    <section>
-      <h3>Folders to scan</h3>
-      <p class="hint">Every git repo inside these folders shows up, down to {draft.scanDepth} levels deep.</p>
-      {#each draft.roots as r}
-        <div class="item"><span class="mono">{r}</span><button onclick={() => remove("roots", r)}>Remove</button></div>
-      {/each}
-      <form class="add" onsubmit={(e) => { e.preventDefault(); add("roots", newRoot); }}>
-        <input bind:value={newRoot} placeholder="Paste a folder path, for example C:\Users\you\Code" spellcheck="false" />
-        <button type="submit">Add</button>
-      </form>
-    </section>
-
-    <section>
-      <h3>Single repos</h3>
-      <p class="hint">Add a repo that is outside the folders above.</p>
-      {#each draft.extra as r}
-        <div class="item"><span class="mono">{r}</span><button onclick={() => remove("extra", r)}>Remove</button></div>
-      {/each}
-      <form class="add" onsubmit={(e) => { e.preventDefault(); add("extra", newRepo); }}>
-        <input bind:value={newRepo} placeholder="Paste a repo path" spellcheck="false" />
-        <button type="submit">Add</button>
-      </form>
-    </section>
-
-    {#if draft.hidden.length}
-      <section>
-        <h3>Hidden repos</h3>
-        {#each draft.hidden as r}
-          <div class="item"><span class="mono">{r}</span><button onclick={() => remove("hidden", r)}>Show again</button></div>
-        {/each}
-      </section>
-    {/if}
-
-    {#if draft.pinned.length}
-      <section>
-        <h3>Pinned repos</h3>
-        {#each draft.pinned as r}
-          <div class="item"><span class="mono">{r}</span><button onclick={() => remove("pinned", r)}>Unpin</button></div>
-        {/each}
-      </section>
-    {/if}
-
-    <section class="about">
-      <div class="aboutrow">
-        <span class="mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M3.5 9.5c3 0 5.5 1.5 8.5 5 3-3.5 5.5-5 8.5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
-        </span>
-        <div class="aboutname">
-          <b>Tern {app.version}</b>
-          <span class="faint">
-            {#if app.update}Version {app.update.info.version} is available.
-            {:else if app.updateCheck.state === "checking"}Checking for updates…
-            {:else if app.updateCheck.state === "current"}Up to date.
-            {:else if app.updateCheck.state === "failed"}Could not check: {app.updateCheck.error}
-            {:else}Source-available under the Business Source License 1.1.{/if}
-          </span>
-        </div>
-        {#if app.update}
-          <button class="btn primary" onclick={() => app.installUpdate()} disabled={app.update.state === "downloading"}>
-            {app.update.state === "downloading" ? `Updating… ${Math.round(app.update.progress * 100)}%` : `Update to ${app.update.info.version}`}
-          </button>
+            <div class="srow">
+              <button class="btn" onclick={addSpace}>Add a space</button>
+              {#if draft.defaultSpace}
+                <button class="btn ghost" onclick={() => (draft.defaultSpace = null)}>Leave unmatched projects out of every space</button>
+              {/if}
+            </div>
+            {#if assigned.length}
+              <h3 class="sub">Moved by hand</h3>
+              <p class="hint">These win over the rules.</p>
+              {#each assigned as [path, id]}
+                <div class="item">
+                  <span class="mono">{path} <span class="faint">in {draft.spaces.find((x) => x.id === id)?.name ?? id}</span></span>
+                  <button class="btn ghost sm" onclick={() => { const { [path]: _, ...rest } = draft.assign; draft.assign = rest; }}>Use rules</button>
+                </div>
+              {/each}
+            {/if}
+          </section>
+        {:else if section === "folders"}
+          <section>
+            <h3>Folders to scan</h3>
+            <p class="hint">Every git project inside these folders shows up, down to {draft.scanDepth} {draft.scanDepth === 1 ? "level" : "levels"} deep.</p>
+            {#each draft.roots as r}
+              <div class="item"><span class="mono">{r}</span><button class="btn ghost sm" onclick={() => remove("roots", r)}>Remove</button></div>
+            {/each}
+            <form class="add" onsubmit={(e) => { e.preventDefault(); add("roots", newRoot); }}>
+              <input class="field grow" bind:value={newRoot} placeholder="Paste a folder path, for example C:\Users\you\Code" spellcheck="false" aria-label="Folder to scan" />
+              {#if inTauri}<button type="button" class="btn" onclick={() => browse("roots")}>Browse…</button>{/if}
+              <button type="submit" class="btn" disabled={!newRoot.trim()}>Add</button>
+            </form>
+          </section>
+          <section>
+            <h3>Single projects</h3>
+            <p class="hint">Add a project that is outside the folders above.</p>
+            {#each draft.extra as r}
+              <div class="item"><span class="mono">{r}</span><button class="btn ghost sm" onclick={() => remove("extra", r)}>Remove</button></div>
+            {/each}
+            <form class="add" onsubmit={(e) => { e.preventDefault(); add("extra", newRepo); }}>
+              <input class="field grow" bind:value={newRepo} placeholder="Paste a project path" spellcheck="false" aria-label="Single project" />
+              {#if inTauri}<button type="button" class="btn" onclick={() => browse("extra")}>Browse…</button>{/if}
+              <button type="submit" class="btn" disabled={!newRepo.trim()}>Add</button>
+            </form>
+          </section>
+        {:else if section === "projects"}
+          <section>
+            <h3>Pinned projects</h3>
+            <p class="hint">Pinned projects stay at the top of the list.</p>
+            {#each draft.pinned as r}
+              <div class="item"><span class="mono">{r}</span><button class="btn ghost sm" onclick={() => remove("pinned", r)}>Unpin</button></div>
+            {:else}
+              <p class="none">No pinned projects. Right-click a project and choose Pin.</p>
+            {/each}
+          </section>
+          <section>
+            <h3>Hidden projects</h3>
+            <p class="hint">Hidden projects do not show in the list.</p>
+            {#each draft.hidden as r}
+              <div class="item"><span class="mono">{r}</span><button class="btn ghost sm" onclick={() => remove("hidden", r)}>Show again</button></div>
+            {:else}
+              <p class="none">No hidden projects.</p>
+            {/each}
+          </section>
+        {:else if section === "updates"}
+          <section class="about">
+            <div class="aboutrow">
+              <span class="mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M3.5 9.5c3 0 5.5 1.5 8.5 5 3-3.5 5.5-5 8.5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </span>
+              <div class="aboutname">
+                <b>Tern {app.version}</b>
+                <span class="faint">
+                  {#if app.update}Version {app.update.info.version} is available.
+                  {:else if app.updateCheck.state === "checking"}Checking for updates…
+                  {:else if app.updateCheck.state === "current"}Up to date.
+                  {:else if app.updateCheck.state === "failed"}Could not check: {app.updateCheck.error}
+                  {:else}Source-available under the Business Source License 1.1.{/if}
+                </span>
+              </div>
+              {#if app.update}
+                <button class="btn primary" onclick={() => app.installUpdate()} disabled={app.update.state === "downloading"}>
+                  {app.update.state === "downloading" ? `Updating… ${Math.round(app.update.progress * 100)}%` : `Update to ${app.update.info.version}`}
+                </button>
+              {:else}
+                <button class="btn" onclick={() => app.checkForUpdate(true)} disabled={app.updateCheck.state === "checking"}>Check for updates</button>
+              {/if}
+            </div>
+            <p class="links">
+              <button class="link" onclick={() => openUrl("https://car-role.github.io/tern/")}>Website</button>
+              <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/releases")}>What's new</button>
+              <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/docs/guide.md")}>Guide</button>
+              <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/issues/new")}>Report a problem</button>
+              <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/LICENSE")}>License</button>
+            </p>
+          </section>
         {:else}
-          <button class="btn" onclick={() => app.checkForUpdate(true)} disabled={app.updateCheck.state === "checking"}>Check for updates</button>
+          <section>
+            <h3>Scanning</h3>
+            <div class="nums">
+              <label class="num">Scan depth <input class="field" type="number" min="1" max="8" bind:value={draft.scanDepth} /> <span class="faint">levels</span></label>
+              <label class="num">Refresh every <input class="field" type="number" min="3" max="300" bind:value={draft.pollSeconds} /> <span class="faint">seconds</span></label>
+            </div>
+          </section>
+          <section>
+            <h3>Settings file</h3>
+            <p class="hint">Everything in Settings except the theme is saved in this file.</p>
+            <p class="mono path">{path || "Loading…"}</p>
+          </section>
         {/if}
       </div>
-      <p class="links">
-        <button class="link" onclick={() => openUrl("https://car-role.github.io/tern/")}>Website</button>
-        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/releases")}>What's new</button>
-        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/docs/guide.md")}>Guide</button>
-        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/issues/new")}>Report a problem</button>
-        <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/LICENSE")}>License</button>
-      </p>
-    </section>
+    </div>
 
-    <section class="nums">
-      <label>Scan depth <input type="number" min="1" max="8" bind:value={draft.scanDepth} /></label>
-      <label>Refresh every <input type="number" min="3" max="300" bind:value={draft.pollSeconds} /> seconds</label>
-    </section>
-
-    <footer>
-      <span class="faint mono path" title={path}>{path}</span>
-      <button class="btn" onclick={() => (app.overlay = null)}>Cancel</button>
-      <button class="btn primary" disabled={saving} onclick={save}>{saving ? "Saving…" : "Save"}</button>
-    </footer>
+    <div class="dialog-foot foot">
+      {#if confirmingClose}
+        <span class="discard">Discard changes?</span>
+        <button class="btn" onclick={() => (confirmingClose = false)}>Keep editing</button>
+        <button class="btn primary danger" onclick={discard}>Discard</button>
+      {:else}
+        <span class="hint">{dirty ? "Unsaved changes" : ""}</span>
+        <button class="btn" onclick={requestClose}>Cancel</button>
+        <button class="btn primary" disabled={saving} onclick={save}>{saving ? "Saving…" : "Save"}</button>
+      {/if}
+    </div>
   </div>
 </div>
 
 <style>
-  /* Opened with the mouse, now and then: a short entrance. Closing stays instant. */
-  .backdrop {
-    animation: tern-fade-in 150ms var(--ease-out);
-  }
   .settings {
-    animation: tern-dialog-in 200ms var(--ease-out);
-  }
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.45);
-    display: grid;
-    place-items: center;
-    z-index: 10;
-    padding: 16px;
-  }
-  .settings {
-    width: min(760px, 100%);
-    max-height: 86vh;
-    overflow-y: auto;
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    padding: 20px 24px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    height: min(680px, calc(88vh - var(--s5)));
     user-select: text;
   }
-  h2 {
-    margin: 0 0 12px;
-    font-size: 16px;
+  .layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s1);
+    width: 180px;
+    flex-shrink: 0;
+    padding: var(--s3);
+    border-right: 1px solid var(--line);
+  }
+  .navitem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    height: var(--h-row);
+    padding: 0 var(--s3);
+    border-radius: var(--radius);
+    color: var(--muted);
+    text-align: left;
+  }
+  .navitem:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .navitem.on {
+    background: var(--raised);
+    color: var(--text);
+  }
+  .content {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 0 var(--s6);
   }
   h3 {
-    margin: 0 0 2px;
-    font-size: 13px;
+    margin: 0 0 var(--s1);
+    font-size: var(--fs-md);
+    font-weight: 600;
+  }
+  h3.sub {
+    margin-top: var(--s5);
   }
   section {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--line);
+    padding: var(--s5) 0;
   }
-  .hint {
-    margin: 0 0 8px;
+  section + section {
+    border-top: 1px solid var(--line);
+  }
+  section .hint {
+    margin: 0 0 var(--s3);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--fs-sm);
+  }
+  .none {
+    margin: 0;
+    color: var(--faint);
+    font-size: var(--fs-sm);
   }
   .item {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 4px 0;
+    gap: var(--s4);
+    min-height: var(--h-row);
   }
-  .item span {
+  .item > span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .item button {
-    color: var(--muted);
-    font-size: 12px;
-    flex-shrink: 0;
-  }
-  .item button:hover {
-    color: var(--del);
-  }
   .add {
     display: flex;
-    gap: 6px;
-    margin-top: 6px;
-  }
-  input {
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 5px 8px;
-    outline: none;
-  }
-  input:focus {
-    border-color: var(--amber);
-  }
-  .add input {
-    flex: 1;
-  }
-  .add button {
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--muted);
+    gap: var(--s2);
+    margin-top: var(--s2);
   }
   .themes {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 8px;
-    margin-top: 6px;
+    gap: var(--s3);
+    margin-top: var(--s2);
   }
   .theme {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 6px;
+    gap: var(--s1);
+    padding: var(--s2);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius);
     text-align: left;
   }
   .theme:hover {
     border-color: var(--line-strong);
   }
   .theme.on {
-    border-color: var(--amber);
-    box-shadow: 0 0 0 1px var(--amber);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
   }
   .preview {
     position: relative;
     height: 44px;
-    border-radius: 5px;
+    border-radius: var(--r-sm);
     overflow: hidden;
     border: 1px solid rgba(128, 128, 128, 0.25);
   }
@@ -406,10 +531,10 @@
   }
   .dots {
     position: absolute;
-    right: 8px;
-    bottom: 8px;
+    right: var(--s3);
+    bottom: var(--s3);
     display: flex;
-    gap: 4px;
+    gap: var(--s1);
   }
   .dots i {
     width: 10px;
@@ -418,36 +543,36 @@
   }
   .tname {
     font-weight: 600;
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
   }
   .tnote {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--faint);
   }
   .space {
     border: 1px solid var(--line);
     border-left: 3px solid var(--c);
     border-radius: var(--radius);
-    padding: 8px 10px;
-    margin: 8px 0;
+    padding: var(--s3) var(--s4);
+    margin: var(--s3) 0;
   }
   .shead {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--s3);
   }
   .sname {
-    width: 160px;
+    width: 180px;
     font-weight: 600;
   }
   .colors {
     display: flex;
-    gap: 4px;
+    gap: var(--s1);
   }
   .color {
     width: 14px;
     height: 14px;
-    border-radius: 4px;
+    border-radius: var(--r-sm);
     opacity: 0.55;
   }
   .color.on {
@@ -455,128 +580,78 @@
     outline: 2px solid var(--text);
     outline-offset: 1px;
   }
-  .grow {
-    flex: 1;
-  }
-  .mini {
-    font-size: 12px;
-    color: var(--muted);
-    padding: 1px 6px;
-    border-radius: 4px;
-  }
-  .mini:hover:not(:disabled) {
-    color: var(--text);
-    background: var(--hover);
-  }
-  .mini:disabled {
-    opacity: 0.35;
-  }
-  .mini.danger:hover {
-    color: var(--del);
-  }
   .rules {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 8px;
+    gap: var(--s3);
+    margin-top: var(--s3);
   }
   .rules label {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    font-size: 12px;
+    gap: var(--s1);
+    font-size: var(--fs-sm);
     color: var(--muted);
-  }
-  textarea {
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 5px 8px;
-    outline: none;
-    color: var(--text);
-    font: 12px/1.4 var(--mono);
-    resize: vertical;
-  }
-  textarea:focus {
-    border-color: var(--amber);
   }
   .tabs-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 5px;
-    margin-top: 8px;
-    font-size: 12px;
+    gap: var(--s1);
+    margin-top: var(--s3);
+    font-size: var(--fs-sm);
     color: var(--muted);
   }
   .tabs-row > span {
-    margin-right: 4px;
+    margin-right: var(--s1);
   }
-  .tabpill {
-    font-size: 11.5px;
-    padding: 1px 9px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    color: var(--faint);
+  .tabtoggle.on {
+    font-weight: 600;
   }
-  .tabpill.on {
-    color: var(--text);
-    border-color: var(--c);
-    background: var(--raised);
-  }
+
   .default {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 8px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .default input {
-    accent-color: var(--amber);
-    margin: 0;
+    margin-top: var(--s3);
   }
   .srow {
     display: flex;
-    gap: 10px;
+    gap: var(--s3);
     align-items: center;
-  }
-  .addspace {
-    font-size: 12px;
-    padding: 4px 10px;
-    border: 1px dashed var(--line-strong);
-    border-radius: var(--radius);
-    color: var(--muted);
-  }
-  .addspace:hover {
-    color: var(--text);
-  }
-  .hint.sub {
-    margin-top: 12px;
+    margin-top: var(--s3);
   }
   .nums {
     display: flex;
-    gap: 24px;
-    border-bottom: 0;
+    flex-wrap: wrap;
+    gap: var(--s6);
+    margin-top: var(--s3);
   }
-  .nums input {
-    width: 64px;
-    margin: 0 6px;
+  .num {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s2);
+    font-size: var(--fs-sm);
+  }
+  .num .field {
+    width: 72px;
+  }
+  .path {
+    margin: 0;
+    word-break: break-all;
+    color: var(--muted);
   }
   .about {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--s3);
   }
   .aboutrow {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--s4);
   }
   .mark {
     width: 30px;
     height: 30px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     display: grid;
     place-items: center;
     background: var(--text);
@@ -588,48 +663,20 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
   }
   .aboutname b {
-    font-size: 13.5px;
-  }
-  .links .link {
-    color: var(--blue);
-    font-size: 12px;
-  }
-  .links .link:hover {
-    text-decoration: underline;
+    font-size: var(--fs-md);
   }
   .links {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 14px;
+    gap: var(--s1) var(--s4);
     margin: 0;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
-  footer {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding-top: 12px;
-  }
-  .path {
-    flex: 1;
-    font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .btn {
-    padding: 5px 14px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--muted);
-  }
-  .btn.primary {
-    background: var(--amber);
-    border-color: var(--amber);
-    color: var(--on-accent);
+  .discard {
+    margin-right: auto;
     font-weight: 600;
   }
 </style>

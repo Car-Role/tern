@@ -38,17 +38,17 @@
   function cellMenu(e: MouseEvent, row: unknown[], n: number, i: number) {
     e.preventDefault();
     app.showMenu(e, `Row ${n}, ${set.columns[i]}`, [
-      { label: "Copy this value", run: () => app.copyValue(row[i] === null ? "" : show(row[i])) },
-      { label: "Copy the row as JSON", run: () => app.copyValue(JSON.stringify(Object.fromEntries(set.columns.map((c, k) => [c, row[k] ?? null])), null, 2), "the row as JSON") },
-      { label: "Copy the row (tab separated)", run: () => app.copyValue(row.map((v) => (v === null ? "" : show(v))).join("\t"), "the row") },
-      { label: `Copy the column name`, run: () => app.copyValue(set.columns[i]) },
+      { label: "Copy value", run: () => app.copyValue(row[i] === null ? "" : show(row[i])) },
+      { label: "Copy row as JSON", run: () => app.copyValue(JSON.stringify(Object.fromEntries(set.columns.map((c, k) => [c, row[k] ?? null])), null, 2), "the row as JSON") },
+      { label: "Copy row (tab separated)", run: () => app.copyValue(row.map((v) => (v === null ? "" : show(v))).join("\t"), "the row") },
+      { label: "Copy column name", run: () => app.copyValue(set.columns[i]) },
     ]);
   }
   function headMenu(e: MouseEvent, i: number) {
     e.preventDefault();
     app.showMenu(e, set.columns[i], [
-      { label: "Copy the column name", run: () => app.copyValue(set.columns[i]) },
-      { label: "Copy every value in this column", run: () => app.copyValue(set.rows.map((r) => (r[i] === null ? "" : show(r[i]))).join("\n"), "the column") },
+      { label: "Copy column name", run: () => app.copyValue(set.columns[i]) },
+      { label: "Copy every value in the column", run: () => app.copyValue(set.rows.map((r) => (r[i] === null ? "" : show(r[i]))).join("\n"), "the column") },
     ]);
   }
 </script>
@@ -78,6 +78,7 @@
 </div>
 
 <style>
+  /* Same look as the CSV table: 26px rows (ROW in the script), a bold header in the UI font, values in the code font. */
   .grid {
     flex: 1;
     min-height: 0;
@@ -113,19 +114,19 @@
     flex-shrink: 0;
     height: 26px;
     line-height: 26px;
-    padding: 0 10px;
+    padding: 0 var(--s3);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     border-right: 1px solid var(--line);
   }
   .th {
-    font-size: 12px;
+    font-size: var(--fs-sm);
     font-weight: 600;
   }
   .num {
     color: var(--faint);
-    font: 11px/26px var(--mono);
+    font: var(--fs-xs) / 26px var(--mono);
     text-align: right;
     background: var(--panel);
     position: sticky;
@@ -133,7 +134,7 @@
   }
   .td {
     border-bottom: 1px solid var(--line);
-    font: 12px/26px var(--mono);
+    font: var(--fs-sm) / 26px var(--mono);
     user-select: text;
   }
   .right {

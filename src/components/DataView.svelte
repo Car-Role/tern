@@ -4,6 +4,8 @@
   import { Compartment, EditorState } from "@codemirror/state";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
+  import { ago as agoSecs } from "../lib/format";
+  import { hover } from "../lib/hover";
   import { queryExtensions } from "../lib/cm";
   import { completionSchema, engineLabel, looksLikeWrite, openQuery, schemaText, tableName, toCsv, toJson, toMarkdown, toTsv } from "../lib/dbtext";
   import type { DbConn, DbEngine, DbQueryResult, DbSchema, DbTable } from "../lib/types";
@@ -53,7 +55,52 @@
       } catch {}
     },
   };
-  const qKey = (c: DbConn) => `dbq.${fixed ? "file:" + c.file : c.id}`;
+  const connId = (c: DbConn) => (fixed ? "file:" + c.file : c.id);
+  const qKey = (c: DbConn) => `dbq.${connId(c)}`;
+
+  // Sizes you set by dragging, remembered across restarts.
+  const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+  const SIDE_MIN = 200;
+  const SIDE_MAX = 480;
+  let sideW = $state(clamp(Number(store.get("dbSideW")) || (untrack(() => fixed) ? 200 : 260), SIDE_MIN, SIDE_MAX));
+  editorH = clamp(Number(store.get("dbEditorH")) || 200, 80, 2000);
+
+  // Query history: the last 50 queries run on each connection, newest first.
+  type HistItem = { q: string; at: number };
+  const HIST_MAX = 50;
+  const histKey = (c: DbConn) => `dbhist.${connId(c)}`;
+  function readHistory(c: DbConn): HistItem[] {
+    try {
+      const v = JSON.parse(store.get(histKey(c)) ?? "[]");
+      return Array.isArray(v) ? v.filter((x) => x && typeof x.q === "string" && typeof x.at === "number") : [];
+    } catch {
+      return [];
+    }
+  }
+  function remember(c: DbConn, q: string) {
+    const list = [{ q, at: Date.now() }, ...readHistory(c).filter((h) => h.q !== q)].slice(0, HIST_MAX);
+    store.set(histKey(c), JSON.stringify(list));
+  }
+  function historyMenu(e: MouseEvent) {
+    const c = conn;
+    if (!c) return;
+    const list = readHistory(c);
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const at = { x: r.left, y: r.bottom + 4 };
+    if (!list.length) {
+      app.showMenu(at, "History", [{ label: "No queries run yet", disabled: true, run: () => {} }]);
+      return;
+    }
+    app.showMenu(at, `History · ${c.name}`, [
+      ...list.map((h) => {
+        const first = h.q.split("\n").find((l) => l.trim())?.trim() ?? h.q;
+        const label = first.length > 60 ? first.slice(0, 59) + "…" : h.q.includes("\n") ? first + " …" : first;
+        return { label, hint: agoSecs(Math.floor(h.at / 1000)), run: () => (setText(h.q), editor?.focus()) };
+      }),
+      "sep" as const,
+      { label: "Clear history", danger: true, run: () => store.set(histKey(c), "[]") },
+    ]);
+  }
 
   async function loadFixedSchema() {
     if (!fixed) return;
@@ -151,6 +198,7 @@
     }
     running = true;
     lastQ = q;
+    remember(c, q);
     started = now = Date.now();
     error = "";
     try {
@@ -196,12 +244,23 @@
   function connMenu(e: MouseEvent, c: DbConn) {
     e.preventDefault();
     app.showMenu(e, c.name, [
-      { label: "Edit", run: () => (form = { conn: c }) },
+      { label: "Edit…", run: () => (form = { conn: c }) },
       { label: "Refresh the schema", run: () => app.loadDbSchema(c.id) },
-      { label: "Copy the schema for an agent", run: () => copySchema(c) },
+      { label: "Copy schema for agent", run: () => copySchema(c) },
       { label: "Disconnect", run: () => api.dbDisconnect(c.id).then(() => app.notify(`Disconnected from ${c.name}.`)) },
-      { label: "Delete…", run: () => (form = { conn: c }) },
+      "sep",
+      { label: "Delete", danger: true, run: () => removeConn(c) },
     ]);
+  }
+
+  async function removeConn(c: DbConn) {
+    const ok = await app.ask({
+      title: `Delete ${c.name}?`,
+      body: "This removes the saved connection and its password from the keychain. The database itself is not touched.",
+      confirm: "Delete",
+      danger: true,
+    });
+    if (ok) await app.removeDbConn(c.id);
   }
 
   function copySchema(c: DbConn | null = conn, only?: DbTable[]) {
@@ -218,7 +277,7 @@
       { label: conn.engine === "redis" ? "Show the value" : "Show the first 100 rows", run: () => openTable(t) },
       ...(conn.engine === "redis" ? [] : [{ label: "Count the rows", run: () => { const q = `SELECT COUNT(*) AS rows FROM ${name};`; setText(q); run(q); } }]),
       { label: "Copy the name", run: () => app.copyValue(name) },
-      ...(conn.engine === "redis" ? [] : [{ label: "Copy its schema for an agent", run: () => copySchema(conn, [t]) }]),
+      ...(conn.engine === "redis" ? [] : [{ label: "Copy schema for agent", run: () => copySchema(conn, [t]) }]),
     ]);
   }
 
@@ -229,7 +288,7 @@
     const c = conn;
     if (!s || !c) return;
     app.showMenu(e, "Copy the results", [
-      { label: "For an agent (query and a Markdown table)", run: () => app.copyValue(`${c.engine === "redis" ? "Redis" : engineLabel[c.engine]} query on ${c.name}:\n\n\`\`\`${c.engine === "redis" ? "" : "sql"}\n${text.trim()}\n\`\`\`\n\nResult${s.more ? ` (first ${s.rows.length.toLocaleString()} of ${(s.rows.length + s.more).toLocaleString()} rows)` : ""}:\n\n${toMarkdown(s)}`, "the query and results for an agent") },
+      { label: "For agent (query and a Markdown table)", run: () => app.copyValue(`${c.engine === "redis" ? "Redis" : engineLabel[c.engine]} query on ${c.name}:\n\n\`\`\`${c.engine === "redis" ? "" : "sql"}\n${text.trim()}\n\`\`\`\n\nResult${s.more ? ` (first ${s.rows.length.toLocaleString()} of ${(s.rows.length + s.more).toLocaleString()} rows)` : ""}:\n\n${toMarkdown(s)}`, "the query and results for an agent") },
       { label: "As tab-separated text (pastes into Excel)", run: () => app.copyValue(toTsv(s), "the results") },
       { label: "As CSV", run: () => app.copyValue(toCsv(s), "the results as CSV") },
       { label: "As JSON", run: () => app.copyValue(toJson(s), "the results as JSON") },
@@ -247,6 +306,23 @@
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      store.set("dbEditorH", String(Math.round(editorH)));
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
+  /** Drags the line between the sidebar and the editor. */
+  function dragSide(e: PointerEvent) {
+    const startX = e.clientX;
+    const start = sideW;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => (sideW = clamp(start + ev.clientX - startX, SIDE_MIN, SIDE_MAX));
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      store.set("dbSideW", String(Math.round(sideW)));
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
@@ -257,9 +333,9 @@
   }
 
   const placeholder: Record<DbEngine, string> = {
-    postgres: "SELECT * FROM … LIMIT 100;   Ctrl+Enter runs it. Select text to run only that.",
-    mssql: "SELECT TOP 100 * FROM …;   Ctrl+Enter runs it. Select text to run only that.",
-    sqlite: "SELECT * FROM … LIMIT 100;   Ctrl+Enter runs it.",
+    postgres: "SELECT * FROM … LIMIT 100;   Ctrl Enter runs it. Select text to run only that.",
+    mssql: "SELECT TOP 100 * FROM …;   Ctrl Enter runs it. Select text to run only that.",
+    sqlite: "SELECT * FROM … LIMIT 100;   Ctrl Enter runs it.",
     redis: "One command per line, like redis-cli:  GET key   HGETALL user:1   SCAN 0 MATCH user:* COUNT 100",
   };
   const redisKind: Record<string, string> = { string: "str", hash: "hash", list: "list", set: "set", zset: "zset", stream: "strm", "ReJSON-RL": "json", TSDB_TYPE: "ts" };
@@ -268,12 +344,13 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="data" class:fixed onkeydown={onKey}>
+<div class="data" class:fixed onkeydown={onKey} style:--sw="{sideW}px">
   <aside class="side">
     {#if !fixed}
-      <div class="head">
-        <h2>Databases</h2>
-        <button class="icon" onclick={() => (form = { conn: null })} title="New connection" aria-label="New connection">
+      <div class="toolbar">
+        <span class="title">Databases</span>
+        <span class="grow"></span>
+        <button class="icon-btn" onclick={() => (form = { conn: null })} aria-label="New connection" use:hover={() => ({ title: "New connection" })}>
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
         </button>
       </div>
@@ -284,26 +361,36 @@
             <span class="dot" style:background={c.color || "var(--faint)"}></span>
             <span class="cname">{c.name}</span>
             <span class="eng">{engineLabel[c.engine]}</span>
-            {#if c.allowWrites}<span class="rw" title="Writes allowed">RW</span>{/if}
+            {#if c.allowWrites}<span class="chip" use:hover={() => ({ title: "Writes allowed", text: "Turn writes on in the bar to change data. Tern asks first." })}>RW</span>{/if}
           </button>
         {/each}
       </div>
     {/if}
     {#if conn}
-      <div class="schema-head" class:top={!!fixed}>
-        <input class="filter" bind:value={filter} placeholder={conn.engine === "redis" ? "Filter keys" : "Filter tables and columns"} spellcheck="false" />
-        <button class="icon" onclick={refreshSchema} title="Refresh the schema" aria-label="Refresh the schema" class:spin={schema?.loading}>
+      <div class="toolbar sub schema-head" class:top={!!fixed}>
+        <input class="field grow" bind:value={filter} placeholder={conn.engine === "redis" ? "Filter keys…" : "Filter tables and columns…"} spellcheck="false" aria-label="Filter the schema" />
+        <button class="icon-btn sm" onclick={refreshSchema} aria-label="Refresh the schema" class:spin={schema?.loading} use:hover={() => ({ title: "Refresh the schema" })}>
           <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 3v2.5h-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
       </div>
       <div class="tree">
         {#if schema?.error}
-          <p class="err mono">{schema.error}</p>
-          {#if !fixed}<button class="link" onclick={() => (form = { conn })}>Edit the connection</button>{/if}
+          <div class="state inline">
+            <span class="state-title">Could not connect</span>
+            <pre>{schema.error}</pre>
+            <div class="actions">
+              <button class="btn sm" onclick={refreshSchema}>Try again</button>
+              {#if !fixed}<button class="btn sm ghost" onclick={() => (form = { conn })}>Edit the connection…</button>{/if}
+            </div>
+          </div>
         {:else if !schema?.data}
-          <p class="faint pad">{schema?.loading ? "Connecting…" : ""}</p>
+          {#if schema?.loading}
+            <div class="skel" aria-hidden="true">
+              {#each [0, 1, 2, 3, 4, 5] as i}<span class="skeleton" style:width="{75 - i * 8}%"></span>{/each}
+            </div>
+          {/if}
         {:else if !schema.data.tables.length}
-          <p class="faint pad">{conn.engine === "redis" ? "No keys." : "No tables."}</p>
+          <div class="state"><span class="state-title">{conn.engine === "redis" ? "No keys" : "No tables"}</span><p>{conn.engine === "redis" ? "This database has no keys yet." : "This database has no tables yet."}</p></div>
         {:else}
           {#each groups as [g, tables] (g)}
             {@const gopen = oneGroup || filter || openGroups.has(g) || ((groups.length < 4 || (schema.data.tables.length <= 60)) && !openGroups.has("!" + g))}
@@ -346,30 +433,40 @@
     {/if}
   </aside>
 
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" onpointerdown={dragSide}
+    ondblclick={() => ((sideW = fixed ? 200 : 260), store.set("dbSideW", String(sideW)))}></div>
+
   <section class="main">
     {#if !conn}
-      <div class="empty">
-        <h3>Look at your data without leaving Tern</h3>
+      <div class="state">
+        <span class="state-title">Look at your data without leaving Tern</span>
         <p>Connect to SQLite, Postgres, SQL Server, or Redis. Connections are read-only unless you turn writes on, and passwords stay in your system keychain.</p>
-        <button class="btn primary" onclick={() => (form = { conn: null })}>New connection</button>
+        <div class="actions"><button class="btn primary" onclick={() => (form = { conn: null })}>New connection…</button></div>
       </div>
     {:else}
-      <div class="bar">
+      <div class="toolbar">
         {#if !fixed}
           <span class="dot" style:background={conn.color || "var(--faint)"}></span>
-          <b class="title">{conn.name}</b>
+          <span class="title">{conn.name}</span>
         {/if}
-        <span class="faint ver">{schema?.data?.version ?? engineLabel[conn.engine]}</span>
+        <span class="meta">{schema?.data?.version ?? engineLabel[conn.engine]}</span>
         <span class="grow"></span>
         {#if conn.allowWrites}
-          <button class="mode" class:writes onclick={() => (writes = !writes)} title={writes ? "Queries may change data. Tern asks first." : "Queries cannot change data."}>
+          <button class="btn ghost sm" class:danger={writes} class:on={writes} aria-pressed={writes} onclick={() => (writes = !writes)}
+            use:hover={() => ({ title: writes ? "Writes on" : "Read-only", text: writes ? "Queries may change data. Tern asks first." : "Queries cannot change data.", hint: "Click to switch" })}>
             {writes ? "Writes on" : "Read-only"}
           </button>
         {:else}
-          <span class="mode ro" title="Edit the connection to allow writes">Read-only</span>
+          <span class="chip" use:hover={() => ({ title: "Read-only", text: "Edit the connection to allow writes." })}>Read-only</span>
         {/if}
-        <button class="btn" onclick={() => copySchema()} title="Copy the schema as short text for an agent">Copy schema</button>
-        <button class="btn primary" onclick={() => run()} disabled={running} title="Run (Ctrl+Enter). With text selected, runs only that.">
+        <span class="sep"></span>
+        <button class="btn ghost sm" onclick={historyMenu} aria-haspopup="menu" use:hover={() => ({ title: "History", text: "The last 50 queries run on this connection." })}>
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M8 5v3.2l2 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          History
+        </button>
+        <button class="btn ghost sm" onclick={() => copySchema()} use:hover={() => ({ title: "Copy schema", text: "The tables and columns as short text for an agent." })}>Copy schema</button>
+        <button class="btn primary sm run" onclick={() => run()} disabled={running} use:hover={() => ({ title: "Run", text: "With text selected, runs only that.", hint: "Ctrl Enter" })}>
           {running ? `Running ${ago}s` : "Run"}
         </button>
       </div>
@@ -377,14 +474,19 @@
         <div class="cmhost" bind:this={host}></div>
         {#if !text}<span class="ph mono">{placeholder[conn.engine]}</span>{/if}
       </div>
-      <div class="split" role="separator" aria-orientation="horizontal" onpointerdown={dragSplit}></div>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div class="split" role="separator" aria-orientation="horizontal" aria-label="Resize the editor" onpointerdown={dragSplit}
+        ondblclick={() => ((editorH = 200), store.set("dbEditorH", "200"))}></div>
       <div class="results">
         {#if error}
-          <pre class="qerr">{error.replace(/^Error: /, "")}{#if /read-only/i.test(error) && !writes}
+          <div class="state inline">
+            <span class="state-title">The query failed</span>
+            <pre>{error.replace(/^Error: /, "")}{#if /read-only/i.test(error) && !writes}
 
 {conn.allowWrites ? "To change data, click Read-only in the bar above to turn writes on." : fixed ? "Files opened from the file list are always read-only. Add the file as a connection to change it." : "To change data, edit the connection and turn on Allow writes."}{/if}</pre>
+          </div>
         {:else if result}
-          <div class="rbar">
+          <div class="toolbar sub">
             {#if result.sets.length > 1}
               <div class="seg" role="tablist">
                 {#each result.sets as s, i}
@@ -395,7 +497,7 @@
               </div>
             {/if}
             {#if set}
-              <span class="faint">
+              <span class="meta">
                 {#if set.columns.length}
                   {set.more ? `First ${set.rows.length.toLocaleString()} of ${(set.rows.length + set.more).toLocaleString()} rows` : `${set.rows.length.toLocaleString()} ${set.rows.length === 1 ? "row" : "rows"}`}
                 {:else if set.affected !== null}
@@ -406,24 +508,30 @@
                 · {result.ms.toLocaleString()} ms
               </span>
             {:else}
-              <span class="faint">No result · {result.ms.toLocaleString()} ms</span>
+              <span class="meta">No result · {result.ms.toLocaleString()} ms</span>
             {/if}
             {#if result.note && looksLikeWrite(conn.engine, lastQ)}<span class="note">{result.note}</span>{/if}
             <span class="grow"></span>
-            {#if set?.columns.length}<button class="btn" onclick={copyMenu}>Copy ▾</button>{/if}
+            {#if set?.columns.length}<button class="btn ghost sm" onclick={copyMenu} aria-haspopup="menu">Copy ▾</button>{/if}
           </div>
           {#if set?.columns.length}
             {#if set.rows.length}
               <DbGrid {set} />
             {:else}
-              <p class="faint pad">No rows. Columns: {set.columns.join(", ")}</p>
+              <div class="state">
+                <span class="state-title">No rows</span>
+                <p>Columns: {set.columns.join(", ")}</p>
+              </div>
             {/if}
           {/if}
         {:else if !running}
-          <p class="faint pad hint">
-            {#if conn.engine === "redis"}Click a key on the left to see its value, or type a command and press <kbd>Ctrl Enter</kbd>.
-            {:else}Click a table on the left for its first 100 rows, or write a query and press <kbd>Ctrl Enter</kbd>. Results show the first 1,000 rows.{/if}
-          </p>
+          <div class="state">
+            <span class="state-title">{conn.engine === "redis" ? "Run a command" : "Run a query"}</span>
+            <p>
+              {#if conn.engine === "redis"}Click a key on the left to see its value, or type a command and press <kbd>Ctrl Enter</kbd>.
+              {:else}Click a table on the left for its first 100 rows, or write a query and press <kbd>Ctrl Enter</kbd>. Results show the first 1,000 rows.{/if}
+            </p>
+          </div>
         {/if}
       </div>
     {/if}
@@ -439,7 +547,8 @@
     grid-column: 3 / -1;
     grid-row: 2;
     display: grid;
-    grid-template-columns: 260px 1fr;
+    grid-template-columns: var(--sw, 260px) 1px minmax(0, 1fr);
+    height: 100%;
     min-height: 0;
     min-width: 0;
     background: var(--bg);
@@ -447,37 +556,27 @@
   .data.fixed {
     position: absolute;
     inset: 0;
-    grid-template-columns: 200px 1fr;
   }
   .side {
-    border-right: 1px solid var(--line);
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
     background: var(--panel);
   }
-  .head {
-    display: flex;
-    align-items: center;
-    padding: 10px 10px 6px 14px;
+  .vsplit {
+    position: relative;
+    background: var(--line);
+    cursor: col-resize;
   }
-  h2 {
-    flex: 1;
-    margin: 0;
-    font-size: 13px;
-    font-weight: 650;
+  .vsplit::after {
+    content: "";
+    position: absolute;
+    inset: 0 -3px;
+    z-index: 1;
   }
-  .icon {
-    width: 24px;
-    height: 24px;
-    display: grid;
-    place-items: center;
-    border-radius: 5px;
-    color: var(--muted);
-  }
-  .icon:hover {
-    background: var(--hover);
-    color: var(--text);
+  .vsplit:hover {
+    background: var(--line-strong);
   }
   .spin svg {
     animation: spin 0.9s linear infinite;
@@ -490,18 +589,20 @@
   .conns {
     display: flex;
     flex-direction: column;
-    padding: 0 6px 8px;
+    padding: var(--s1) var(--s2) var(--s3);
     max-height: 40%;
     overflow: auto;
   }
   .conn {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    border-radius: 6px;
+    gap: var(--s3);
+    height: var(--h-row);
+    padding: 0 var(--s3);
+    border-radius: var(--radius);
     text-align: left;
-    font-size: 13px;
+    font-size: var(--fs-md);
+    flex-shrink: 0;
   }
   .conn:hover {
     background: var(--hover);
@@ -523,56 +624,38 @@
     white-space: nowrap;
   }
   .eng {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--faint);
   }
-  .rw {
-    font: 600 9.5px var(--mono);
-    color: var(--amber);
-    border: 1px solid color-mix(in srgb, var(--amber) 50%, transparent);
-    border-radius: 3px;
-    padding: 0 3px;
-  }
   .schema-head {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    padding: 8px 8px 6px 10px;
+    gap: var(--s1);
     border-top: 1px solid var(--line);
   }
   .schema-head.top {
     border-top: 0;
-    background: var(--panel);
-  }
-  .filter {
-    flex: 1;
-    min-width: 0;
-    font: inherit;
-    font-size: 12px;
-    color: var(--text);
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 4px 8px;
-    outline: none;
-  }
-  .filter:focus {
-    border-color: var(--amber);
   }
   .tree {
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 2px 4px 12px;
-    background: var(--panel);
+    padding: var(--s1) var(--s1) var(--s4);
+  }
+  .skel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+    padding: var(--s3) var(--s4);
+  }
+  .skel .skeleton {
+    height: 10px;
   }
   .group {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--s1);
     width: 100%;
-    padding: 4px 6px;
-    font-size: 12px;
+    padding: var(--s1) var(--s2);
+    font-size: var(--fs-sm);
     font-weight: 600;
     color: var(--muted);
     text-align: left;
@@ -580,13 +663,13 @@
   .group .n {
     margin-left: auto;
     font-weight: 400;
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .chev {
     width: 14px;
     flex-shrink: 0;
     color: var(--faint);
-    font-size: 10px;
+    font-size: var(--fs-xs);
     text-align: center;
   }
   .trow {
@@ -594,20 +677,20 @@
     align-items: center;
   }
   .trow.nested {
-    padding-left: 12px;
+    padding-left: var(--s4);
   }
   .col.nested {
-    padding-left: 46px;
+    padding-left: calc(var(--s6) + var(--s3) + var(--s4));
   }
   .tname {
     flex: 1;
     min-width: 0;
     display: flex;
-    gap: 6px;
+    gap: var(--s2);
     align-items: baseline;
-    padding: 3px 6px;
-    border-radius: 5px;
-    font: 12.5px var(--mono);
+    padding: var(--s1) var(--s2);
+    border-radius: var(--r-sm);
+    font: var(--fs-sm) var(--ui);
     text-align: left;
     white-space: nowrap;
     overflow: hidden;
@@ -616,10 +699,10 @@
   .tname:hover,
   .group:hover {
     background: var(--hover);
-    border-radius: 5px;
+    border-radius: var(--r-sm);
   }
   .kind {
-    font: 10px var(--ui);
+    font: var(--fs-xs) var(--ui);
     color: var(--faint);
     min-width: 0;
   }
@@ -641,9 +724,9 @@
   }
   .col {
     display: flex;
-    gap: 8px;
-    padding: 1px 6px 1px 34px;
-    font: 11.5px/18px var(--mono);
+    gap: var(--s3);
+    padding: 1px var(--s2) 1px calc(var(--s6) + var(--s3));
+    font: var(--fs-xs) / 18px var(--ui);
   }
   .cn {
     flex: 1;
@@ -653,41 +736,32 @@
     white-space: nowrap;
   }
   .cn.key {
-    color: var(--amber);
+    color: var(--text);
+    font-weight: 600;
   }
   .pk {
-    margin-left: 5px;
-    font: 600 9px var(--ui);
-    padding: 0 3px;
-    border-radius: 3px;
-    border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
-    vertical-align: 1px;
+    margin-left: var(--s1);
+    padding: 0 var(--s1);
+    font-weight: 600;
+    color: var(--muted);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
   }
   .ct {
     color: var(--faint);
+    font-family: var(--mono);
     white-space: nowrap;
   }
-  .err {
-    margin: 8px;
-    font-size: 11.5px;
-    color: var(--del);
-    white-space: pre-wrap;
-    user-select: text;
-  }
-  .link {
-    color: var(--blue);
-    font-size: 12px;
-    padding: 0 8px;
-  }
   .link.more {
-    padding: 4px 26px;
+    padding: var(--s1) var(--s6);
+    font-size: var(--fs-sm);
   }
   .pad {
-    padding: 8px 12px;
+    padding: var(--s3) var(--s4);
     margin: 0;
   }
   .small {
-    font-size: 11.5px;
+    font-size: var(--fs-xs);
   }
   .main {
     display: flex;
@@ -695,58 +769,8 @@
     min-width: 0;
     min-height: 0;
   }
-  .bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--line);
-    min-height: 40px;
-  }
-  .title {
-    font-size: 13px;
-  }
-  .ver {
-    font-size: 12px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-  }
-  .grow {
-    flex: 1;
-  }
-  .btn {
-    font-size: 12px;
-    padding: 3px 10px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    color: var(--text);
-    white-space: nowrap;
-  }
-  .btn:hover:not(:disabled) {
-    background: var(--hover);
-  }
-  .btn.primary {
-    background: var(--amber);
-    border-color: var(--amber);
-    color: var(--on-accent);
+  .run {
     min-width: 54px;
-  }
-  .btn:disabled {
-    opacity: 0.7;
-  }
-  .mode {
-    font-size: 11.5px;
-    padding: 2px 9px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .mode.writes {
-    color: var(--on-accent);
-    background: var(--del);
-    border-color: var(--del);
   }
   .editor {
     position: relative;
@@ -763,11 +787,11 @@
   }
   .ph {
     position: absolute;
-    top: 6px;
+    top: var(--s2);
     left: 44px;
-    right: 16px;
+    right: var(--s5);
     color: var(--faint);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     pointer-events: none;
   }
   .split {
@@ -786,59 +810,11 @@
     display: flex;
     flex-direction: column;
   }
-  .rbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 5px 12px;
-    font-size: 12px;
-    border-bottom: 1px solid var(--line);
-    min-height: 34px;
-  }
-  .seg {
-    display: flex;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .seg button {
-    font-size: 12px;
-    padding: 2px 9px;
-    color: var(--muted);
-  }
-  .seg button.on {
-    background: var(--raised);
-    color: var(--text);
+  .results > .state.inline {
+    padding: var(--s4);
   }
   .note {
-    font-size: 11.5px;
-    color: var(--amber);
-  }
-  .qerr {
-    margin: 12px;
-    padding: 10px 12px;
-    border-radius: 6px;
-    font: 12px/1.5 var(--mono);
-    white-space: pre-wrap;
-    color: var(--del);
-    background: var(--del-bg);
-    user-select: text;
-  }
-  .hint {
-    padding: 16px;
-  }
-  .empty {
-    margin: auto;
-    max-width: 420px;
-    text-align: center;
-    padding: 24px;
-  }
-  .empty h3 {
-    margin: 0 0 8px;
-    font-size: 15px;
-  }
-  .empty p {
+    font-size: var(--fs-xs);
     color: var(--muted);
-    margin: 0 0 16px;
   }
 </style>

@@ -5,6 +5,7 @@
   import { rank } from "../lib/fuzzy";
   import { ago, baseName } from "../lib/format";
   import type { Branch } from "../lib/types";
+  import { hover } from "../lib/hover";
 
   const repo = app.current!;
   const main = app.mainOf(repo);
@@ -130,21 +131,22 @@
 </script>
 
 <div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && (app.overlay = null)}>
-  <div class="dialog" role="dialog" aria-label="Branches and worktrees">
-    <header>
-      <div class="seg" role="tablist">
+  <div class="dialog lg picker" role="dialog" aria-modal="true" aria-label="Branches and worktrees">
+    <div class="dialog-head head">
+      <div class="tabs" role="tablist">
         <button role="tab" class:on={tab === "branches"} aria-selected={tab === "branches"} onclick={() => { tab = "branches"; formOpen = false; }}>Branches</button>
-        <button role="tab" class:on={tab === "worktrees"} aria-selected={tab === "worktrees"} onclick={() => (tab = "worktrees")}>Worktrees <span class="n">{worktrees.length - 1}</span></button>
+        <button role="tab" class:on={tab === "worktrees"} aria-selected={tab === "worktrees"} onclick={() => (tab = "worktrees")}>Worktrees <span class="badge">{worktrees.length - 1}</span></button>
       </div>
+      <span class="grow"></span>
       <span class="where">{app.repos.find((r) => r.path === main)?.name ?? baseName(main)}</span>
-    </header>
+    </div>
 
     {#if formOpen}
-      <div class="form">
+      <div class="dialog-body form">
         <h3>New worktree</h3>
-        <p class="hint">A worktree is a second folder for the same repo, on its own branch. Work there does not touch your main folder.</p>
-        <label>Branch
-          <input bind:value={wtBranch} list="tern-branch-list" spellcheck="false" oninput={suggest} placeholder="new-branch-name or an existing branch" />
+        <p class="help">A worktree is a second folder for the same project, on its own branch. Work there does not touch your main folder.</p>
+        <label class="lbl">Branch
+          <input class="field" bind:value={wtBranch} list="tern-branch-list" spellcheck="false" oninput={suggest} placeholder="new-branch-name or an existing branch" />
           <datalist id="tern-branch-list">
             {#each branches.filter((b) => !b.worktree) as b}<option value={b.name}></option>{/each}
           </datalist>
@@ -152,37 +154,44 @@
         {#if wtTaken}
           <p class="warn">{wtBranch} is already checked out in {wtTaken.worktree}. Git allows a branch in one worktree at a time.</p>
         {:else if wtIsNew}
-          <label>Start from
-            <select bind:value={wtBase}>
+          <label class="lbl">Start from
+            <select class="field" bind:value={wtBase}>
               {#each bases as b}<option value={b}>{b}</option>{/each}
               <option value="">the current commit</option>
             </select>
           </label>
-          <p class="hint small">A new branch named <strong>{wtBranch}</strong> is made.</p>
+          <p class="help">A new branch named <strong>{wtBranch}</strong> is made.</p>
         {/if}
-        <label>Folder <input class="mono" bind:value={wtPath} spellcheck="false" /></label>
+        <label class="lbl">Folder <input class="field mono" bind:value={wtPath} spellcheck="false" /></label>
         <label class="check"><input type="checkbox" bind:checked={wtAgent} /> Start Claude Code in it</label>
-        <div class="buttons">
-          <button class="btn" onclick={() => (formOpen = false)}>Back</button>
-          <button class="btn primary" disabled={!wtBranch.trim() || !wtPath.trim() || !!wtTaken || busy} onclick={createWorktree}>
-            {busy ? "Making…" : "Make worktree"}
-          </button>
-        </div>
+      </div>
+      <div class="dialog-foot">
+        <span class="grow"></span>
+        <button class="btn" onclick={() => (formOpen = false)}>Back</button>
+        <button class="btn primary" disabled={!wtBranch.trim() || !wtPath.trim() || !!wtTaken || busy} onclick={createWorktree}>
+          {busy ? "Making…" : "Make worktree"}
+        </button>
       </div>
     {:else if tab === "branches"}
       <div class="top">
-        <input bind:this={input} bind:value={query} onkeydown={onKey} placeholder="Find a branch, or type a new name" spellcheck="false" aria-label="Branch" />
-        <label class="check small"><input type="checkbox" bind:checked={showRemote} /> Remote branches</label>
+        <input class="field grow" bind:this={input} bind:value={query} onkeydown={onKey} placeholder="Find a branch, or type a new name" spellcheck="false" aria-label="Branch" />
+        <label class="check"><input type="checkbox" bind:checked={showRemote} /> Remote branches</label>
       </div>
       <div class="list" bind:this={listEl} role="listbox">
         {#if loading}<p class="note">Reading branches…</p>{/if}
-        {#if error}<p class="note err">{error}</p>{/if}
+        {#if error}
+          <div class="state inline">
+            <span class="state-title">Could not read branches</span>
+            <pre>{error}</pre>
+            <div class="actions"><button class="btn sm" onclick={load}>Try again</button></div>
+          </div>
+        {/if}
         {#if canCreate}
           <button class="row create" class:on={active === 0} role="option" aria-selected={active === 0} onmousemove={() => (active = 0)} onclick={createBranch}>
             <span class="plus">+</span>
             <span class="bname">Make branch <strong>{query.trim()}</strong> from here</span>
             <span class="grow"></span>
-            <span class="keys faint"><kbd>Enter</kbd> switch to it, <kbd>Alt Enter</kbd> in a new worktree</span>
+            <span class="keys"><kbd>Enter</kbd> switch to it · <kbd>Alt Enter</kbd> in a new worktree</span>
           </button>
         {/if}
         {#each shown as b, i (b.name)}
@@ -192,32 +201,32 @@
             <span class="mark">{b.current ? "●" : ""}</span>
             <div class="two">
               <div class="l1">
-                <span class="bname mono">{b.name}</span>
+                <span class="bname">{b.name}</span>
                 {#if b.ahead}<span class="ahead mono">↑{b.ahead}</span>{/if}
                 {#if b.behind}<span class="behind mono">↓{b.behind}</span>{/if}
-                {#if b.worktree && b.worktree.toLowerCase() !== repo.toLowerCase()}<span class="tag wt">in {baseName(b.worktree)}</span>{/if}
-                {#if b.merged}<span class="tag merged">merged</span>{/if}
-                {#if b.gone}<span class="tag gone">remote gone</span>{/if}
+                {#if b.worktree && b.worktree.toLowerCase() !== repo.toLowerCase()}<span class="chip wt">in {baseName(b.worktree)}</span>{/if}
+                {#if b.merged}<span class="chip merged">merged</span>{/if}
+                {#if b.gone}<span class="chip gone">remote gone</span>{/if}
               </div>
               <div class="l2"><span class="sha mono">{b.sha}</span> {b.subject} <span class="faint">{b.author}, {ago(b.time)}</span></div>
             </div>
             {#if idx === active}
               <div class="acts">
-                {#if !b.current}<button onclick={(e) => { e.stopPropagation(); doSwitch(b); }}>{b.worktree ? "Open" : "Switch"}</button>{/if}
-                {#if !b.worktree}<button onclick={(e) => { e.stopPropagation(); openForm(b.name); }}>New worktree</button>{/if}
+                {#if !b.current}<button class="btn ghost sm" onclick={(e) => { e.stopPropagation(); doSwitch(b); }}>{b.worktree ? "Open" : "Switch"}</button>{/if}
+                {#if !b.worktree}<button class="btn ghost sm" onclick={(e) => { e.stopPropagation(); openForm(b.name); }}>New worktree</button>{/if}
                 {#if !b.remote && !b.current && !b.worktree}
-                  <button class="danger" onclick={async (e) => { e.stopPropagation(); if (await app.deleteBranch(b.name, b.merged)) load(); }}>Delete</button>
+                  <button class="btn ghost sm danger" onclick={async (e) => { e.stopPropagation(); if (await app.deleteBranch(b.name, b.merged)) load(); }}>Delete</button>
                 {/if}
               </div>
             {/if}
           </div>
         {/each}
       </div>
-      <p class="foot faint">
-        <kbd>Enter</kbd> switch. <kbd>Alt Enter</kbd> open in a new worktree. {#if base}"merged" means its commits are in {base}.{/if}
-      </p>
+      <div class="dialog-foot">
+        <span class="hint"><kbd>Enter</kbd> switch · <kbd>Alt Enter</kbd> open in a new worktree{#if base}{" · "}"merged" means its commits are in {base}{/if}</span>
+      </div>
     {:else}
-      <div class="list">
+      <div class="list wtlist">
         {#each worktrees as w (w.path)}
           {@const s = app.sums[w.path]}
           {@const isMain = w.path === main}
@@ -226,25 +235,25 @@
             <div class="two">
               <div class="l1">
                 <span class="bname">{isMain ? "Main folder" : w.name}</span>
-                <span class="mono faint">{s?.branch ?? (s?.error ? "" : "detached")}</span>
-                {#if s?.changes.length}<span class="tag chg">{s.changes.length} changed</span>{/if}
-                {#if app.isWorking(w.path)}<span class="tag working">working</span>{/if}
-                {#if s?.error}<span class="tag gone">broken</span>{/if}
+                <span class="faint">{s?.branch ?? (s?.error ? "" : "detached")}</span>
+                {#if s?.changes.length}<span class="chip chg">{s.changes.length} changed</span>{/if}
+                {#if app.isWorking(w.path)}<span class="chip working">working</span>{/if}
+                {#if s?.error}<span class="chip gone">broken</span>{/if}
               </div>
               <div class="l2 mono faint">{w.path}</div>
             </div>
-            <div class="acts always">
-              {#if w.path !== repo}<button onclick={() => { app.overlay = null; app.select(w.path); }}>Open</button>{/if}
+            <div class="acts">
+              {#if w.path !== repo}<button class="btn ghost sm" onclick={() => { app.overlay = null; app.select(w.path); }}>Open</button>{/if}
               {#if !isMain && !s?.error}
-                <button onclick={async () => { app.overlay = null; app.select(w.path); await app.openBranchReview(); }}>Review</button>
+                <button class="btn ghost sm" onclick={async () => { app.overlay = null; app.select(w.path); await app.openBranchReview(); }}>Review</button>
               {/if}
-              {#if !isMain}<button class="danger" onclick={async () => { app.overlay = null; await app.removeWorktree(w.path); }}>Remove</button>{/if}
+              {#if !isMain}<button class="btn ghost sm danger" onclick={async () => { app.overlay = null; await app.removeWorktree(w.path); }}>Remove</button>{/if}
             </div>
           </div>
         {/each}
       </div>
-      <div class="buttons">
-        <button class="btn" onclick={() => app.pruneWorktrees(main)} title="Forget worktrees whose folder was deleted">Clean up missing</button>
+      <div class="dialog-foot">
+        <button class="btn" onclick={() => app.pruneWorktrees(main)} use:hover={() => ({ title: "Clean up missing", text: "Forget worktrees whose folder was deleted." })}>Clean up missing</button>
         <span class="grow"></span>
         <button class="btn primary" onclick={() => openForm("")}>New worktree…</button>
       </div>
@@ -253,123 +262,68 @@
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.45);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: 10vh 16px 16px;
-    z-index: 10;
+  .picker {
+    height: min(640px, calc(88vh - var(--s5)));
   }
-  .dialog {
-    width: min(720px, 100%);
-    max-height: 78vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    padding: 12px 14px;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
+  /* The head holds tabs, so they run the full height and their underline sits on the divider. */
+  .head {
+    align-items: stretch;
+    padding-top: 0;
+    padding-bottom: 0;
+    flex-shrink: 0;
   }
   .where {
+    align-self: center;
     color: var(--muted);
-    font-size: 12px;
-  }
-  .seg {
-    display: flex;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .seg button {
-    font-size: 12px;
-    padding: 3px 12px;
-    color: var(--muted);
-  }
-  .seg button.on {
-    background: var(--raised);
-    color: var(--text);
-  }
-  .n {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--faint);
+    font-size: var(--fs-sm);
   }
   .top {
     display: flex;
-    gap: 10px;
+    gap: var(--s4);
     align-items: center;
-    margin-bottom: 8px;
-  }
-  input,
-  select {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 6px 9px;
-    outline: none;
-    font: inherit;
-  }
-  input:focus,
-  select:focus {
-    border-color: var(--amber);
-  }
-  .top input {
-    flex: 1;
-    font-size: 14px;
+    padding: var(--s4) var(--s5) var(--s3);
+    flex-shrink: 0;
   }
   .check {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--muted);
-    font-size: 12px;
     white-space: nowrap;
   }
-  .check input {
-    accent-color: var(--amber);
-    margin: 0;
-  }
+  /* The list is as tall as its branches, up to half the window, so a small project gives a small dialog. */
   .list {
-    flex: 1;
+    flex: 0 1 auto;
+    max-height: 50vh;
     min-height: 120px;
     overflow-y: auto;
-    border: 1px solid var(--line);
+    margin: 0 var(--s5) var(--s4);
+    background: var(--bg);
     border-radius: var(--radius);
-    padding: 4px;
+    padding: var(--s1);
+  }
+  .wtlist {
+    margin-top: var(--s4);
   }
   .row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--s3);
     width: 100%;
+    min-height: var(--h-row);
     text-align: left;
-    padding: 5px 8px;
-    border-radius: 5px;
+    padding: var(--s1) var(--s3);
+    border-radius: var(--r-sm);
     cursor: default;
   }
   .row.on {
     background: var(--raised);
-    box-shadow: inset 2px 0 0 var(--amber);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .mark {
-    width: 10px;
-    color: var(--amber);
-    font-size: 9px;
+    width: var(--s3);
+    color: var(--text);
+    font-size: var(--fs-xs);
     flex-shrink: 0;
   }
   .plus {
-    width: 10px;
+    width: var(--s3);
     color: var(--add);
     font-weight: 700;
   }
@@ -380,7 +334,7 @@
   .l1 {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: var(--s2);
     min-width: 0;
   }
   .bname {
@@ -393,150 +347,87 @@
     font-weight: 600;
   }
   .l2 {
-    font-size: 11.5px;
+    font-size: var(--fs-xs);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: 1px;
+    margin-top: var(--s1);
   }
   .sha {
-    color: var(--amber);
-    font-size: 11px;
+    color: var(--faint);
+    font-size: var(--fs-xs);
   }
   .ahead {
     color: var(--add);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .behind {
     color: var(--blue);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
-  .tag {
-    font-size: 10.5px;
-    padding: 0 6px;
-    border-radius: 8px;
-    border: 1px solid var(--line-strong);
-    color: var(--muted);
-    white-space: nowrap;
-  }
-  .tag.wt {
+  /* Tones for the small labels on a row. */
+  .chip.wt {
     color: var(--blue);
     border-color: transparent;
     background: var(--hover);
   }
-  .tag.merged {
+  .chip.merged,
+  .chip.working {
     color: var(--add);
     border-color: transparent;
     background: var(--add-bg);
   }
-  .tag.gone {
+  .chip.gone {
     color: var(--del);
     border-color: transparent;
     background: var(--del-bg);
   }
-  .tag.chg {
-    color: var(--amber);
+  .chip.chg {
+    color: var(--accent);
     border-color: transparent;
-    background: var(--amber-soft);
-  }
-  .tag.working {
-    color: var(--add);
-    border-color: var(--add);
+    background: var(--accent-soft);
   }
   .acts {
     display: flex;
-    gap: 2px;
+    gap: var(--s1);
     flex-shrink: 0;
   }
-  .acts button {
-    font-size: 12px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    color: var(--muted);
-  }
-  .acts button:hover {
-    background: var(--line);
-    color: var(--text);
-  }
-  .acts button.danger:hover {
-    color: var(--del);
-  }
-  .grow {
-    flex: 1;
-  }
   .keys {
-    font-size: 11px;
+    font-size: var(--fs-xs);
+    color: var(--faint);
   }
   .note {
-    margin: 8px;
+    margin: var(--s3);
     color: var(--muted);
-  }
-  .note.err {
-    color: var(--del);
-    font-family: var(--mono);
-    font-size: 12px;
-    white-space: pre-wrap;
-  }
-  .foot {
-    margin: 8px 2px 0;
-    font-size: 11.5px;
   }
   .form {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--s3);
+    flex: 1;
+    padding-top: var(--s4);
   }
   .form h3 {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--fs-md);
+    font-weight: 600;
   }
-  .form label:not(.check) {
+  .lbl {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    font-size: 12px;
+    gap: var(--s1);
+    font-size: var(--fs-sm);
     color: var(--muted);
   }
-  .hint {
+  .help {
     margin: 0;
     color: var(--muted);
-    font-size: 12px;
-  }
-  .hint.small {
-    margin-top: -4px;
+    font-size: var(--fs-sm);
   }
   .warn {
     margin: 0;
-    color: var(--amber);
-    font-size: 12px;
-  }
-  .buttons {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    align-items: center;
-    margin-top: 10px;
-  }
-  .btn {
-    padding: 5px 14px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--muted);
-  }
-  .btn:hover:not(:disabled) {
-    color: var(--text);
-  }
-  .btn.primary {
-    background: var(--amber);
-    border-color: var(--amber);
-    color: var(--on-accent);
-    font-weight: 600;
-  }
-  .btn.primary:disabled {
-    background: var(--raised);
-    border-color: var(--line);
-    color: var(--faint);
-    cursor: default;
+    color: var(--del);
+    font-size: var(--fs-sm);
   }
 </style>

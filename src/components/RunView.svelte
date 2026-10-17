@@ -4,6 +4,8 @@
   import { agoIso, duration } from "../lib/format";
   import { popOnDone } from "../lib/motion";
   import type { CiRun, CiStep } from "../lib/types";
+  import { hover } from "../lib/hover";
+  import Icon from "./Icon.svelte";
 
   let { repo, run }: { repo: string; run: CiRun } = $props();
 
@@ -47,6 +49,12 @@
   const word = (status: string, result: string) =>
     status === "running" ? "Running" : status === "queued" ? "Waiting" : { succeeded: "Succeeded", partial: "Finished with warnings", failed: "Failed", canceled: "Canceled", skipped: "Skipped", "": "Finished" }[result] ?? result;
 
+  function retry() {
+    loading = true;
+    error = "";
+    load();
+  }
+
   function copyForAgent() {
     const r = live;
     const lines = [
@@ -60,143 +68,194 @@
     ].filter((l, i) => l || i < 3);
     app.copyValue(lines.join("\n"), "the CI problems for an agent");
   }
+
+  /** The narrow-window menu with the toolbar's actions. */
+  function moreMenu(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    app.showMenu({ x: r.left, y: r.bottom + 4 }, `Run #${live.number}`, [
+      { label: "Copy for agent", disabled: !problems.length, run: copyForAgent },
+      { label: "Copy link", run: () => app.copyValue(live.url) },
+      { label: "Open in browser", run: () => openUrl(live.url) },
+    ]);
+  }
 </script>
 
 <div class="runview">
-  <header>
-    <h1><span class="icon r-{live.result} s-{live.status}" use:popOnDone={live.status}>{icon(live.status, live.result)}</span> {live.name} <span class="num mono">#{live.number}</span></h1>
-    <p class="meta">
-      <span class="state r-{live.result} s-{live.status}">{word(live.status, live.result)}</span>
-      <span class="mono">{live.branch}</span>
-      {#if live.sha}<button class="sha mono" onclick={() => app.copyValue(live.sha.slice(0, 7), `commit ID ${live.sha.slice(0, 7)}`)}>{live.sha.slice(0, 7)}</button>{/if}
-      <span>{live.by}</span>
-      <span class="faint">started {agoIso(live.started)}{#if took(live.started, live.finished)}, took {took(live.started, live.finished)}{/if}</span>
-    </p>
-    {#if live.title}<p class="title">{live.title}</p>{/if}
-    <div class="actions">
-      <button class="btn" onclick={copyForAgent} disabled={!problems.length}>Copy problems for an agent</button>
-      <button class="btn" onclick={() => app.copyValue(live.url)}>Copy link</button>
-      <button class="btn" onclick={() => openUrl(live.url)}>Open in {live.provider === "azdo" ? "Azure DevOps" : "GitHub"}</button>
-    </div>
+  <header class="toolbar">
+    <span class="icon r-{live.result} s-{live.status}" use:popOnDone={live.status}>{icon(live.status, live.result)}</span>
+    <span class="title">{live.name} <span class="num mono">#{live.number}</span></span>
+    <span class="chip st r-{live.result} s-{live.status}">{word(live.status, live.result)}</span>
+    <span class="meta">{live.branch}</span>
+    <span class="grow"></span>
+    <button class="btn sm ghost lo" onclick={copyForAgent} disabled={!problems.length}
+      use:hover={() => ({ title: problems.length ? "Copy the problems in this run for an agent" : "No problems to copy" })}>Copy for agent</button>
+    <button class="btn sm ghost lo" onclick={() => app.copyValue(live.url)}>Copy link</button>
+    <button class="btn sm ghost lo" onclick={() => openUrl(live.url)}
+      use:hover={() => ({ title: `Open in ${live.provider === "azdo" ? "Azure DevOps" : "GitHub"}` })}>Open in browser</button>
+    <button class="icon-btn sm more" onclick={moreMenu} aria-label="More actions" aria-haspopup="menu"
+      use:hover={() => ({ title: "More actions", text: "Copy for agent, Copy link, Open in browser" })}><Icon name="more" /></button>
   </header>
-
-  {#if loading && !steps.length}
-    <p class="note">Loading stages and jobs…</p>
-  {:else if error}
-    <p class="note err">{error}</p>
-  {:else}
-    <div class="steps">
-      <label class="all"><input type="checkbox" bind:checked={showAll} /> Show every step (otherwise only steps with problems)</label>
-      {#each shown as st}
-        <div class="step k-{st.kind}" style:padding-left="{12 + st.depth * 18}px">
-          <span class="icon r-{st.result} s-{st.status}">{icon(st.status, st.result)}</span>
-          <span class="sname">{st.name}</span>
-          <span class="faint mono">{took(st.started, st.finished)}</span>
-        </div>
-        {@const key = st.depth + st.name}
-        {@const sorted = [...st.issues].sort((a, b) => Number(b.kind === "error") - Number(a.kind === "error"))}
-        {@const cut = open[key] ? sorted : sorted.filter((is, i) => is.kind === "error" || i < 3)}
-        {#each cut as is}
-          <div class="issue {is.kind}" style:padding-left="{36 + st.depth * 18}px">
-            <span class="ikind">{is.kind}</span><span class="imsg mono">{is.message}</span>
-          </div>
-        {/each}
-        {#if cut.length < sorted.length}
-          <button class="more" style:margin-left="{100 + st.depth * 18}px" onclick={() => (open[key] = true)}>Show {sorted.length - cut.length} more warnings</button>
-        {/if}
-      {/each}
-      {#if !steps.length}<p class="note">This run has no stages or jobs yet.</p>{/if}
+  {#if steps.length}
+    <div class="toolbar sub">
+      <span class="meta">{problems.length ? `${problems.length} ${problems.length === 1 ? "step has" : "steps have"} problems` : "No problems"}</span>
+      <span class="grow"></span>
+      <label class="check"><input type="checkbox" bind:checked={showAll} /> Show every step</label>
     </div>
   {/if}
+
+  <div class="scroll">
+    <div class="head">
+      <p class="info">
+        {#if live.sha}<button class="sha mono" onclick={() => app.copyValue(live.sha.slice(0, 7), `commit ID ${live.sha.slice(0, 7)}`)}
+          use:hover={() => ({ title: "Copy commit ID", rows: [{ label: "Commit", value: live.sha, mono: true }] })}>{live.sha.slice(0, 7)}</button>{/if}
+        <span>{live.by}</span>
+        <span class="faint">started {agoIso(live.started)}{#if took(live.started, live.finished)}, took {took(live.started, live.finished)}{/if}</span>
+      </p>
+      {#if live.title}<p class="msg">{live.title}</p>{/if}
+    </div>
+
+    {#if loading && !steps.length}
+      <div class="state delay"><p>Loading stages and jobs…</p></div>
+    {:else if error}
+      <div class="state">
+        <span class="state-title">Could not load this run</span>
+        <pre>{error}</pre>
+        <div class="actions"><button class="btn" onclick={retry}>Try again</button></div>
+      </div>
+    {:else if !steps.length}
+      <div class="state"><p>This run has no stages or jobs yet.</p></div>
+    {:else}
+      <div class="steps">
+        {#each shown as st}
+          <div class="step k-{st.kind}" style:padding-left="{12 + st.depth * 18}px">
+            <span class="icon r-{st.result} s-{st.status}">{icon(st.status, st.result)}</span>
+            <span class="sname">{st.name}</span>
+            <span class="faint mono">{took(st.started, st.finished)}</span>
+          </div>
+          {@const key = st.depth + st.name}
+          {@const sorted = [...st.issues].sort((a, b) => Number(b.kind === "error") - Number(a.kind === "error"))}
+          {@const cut = open[key] ? sorted : sorted.filter((is, i) => is.kind === "error" || i < 3)}
+          {#each cut as is}
+            <div class="issue {is.kind}" style:padding-left="{36 + st.depth * 18}px">
+              <span class="ikind">{is.kind}</span><span class="imsg mono">{is.message}</span>
+            </div>
+          {/each}
+          {#if cut.length < sorted.length}
+            <button class="link more" style:margin-left="{100 + st.depth * 18}px" onclick={() => (open[key] = true)}>Show {sorted.length - cut.length} more warnings</button>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
   .runview {
     position: absolute;
     inset: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
-    padding: 20px 26px 40px;
+    padding: var(--s4) var(--s6) 40px;
     user-select: text;
   }
-  header {
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--line);
-    max-width: 900px;
+  .scroll > * {
+    flex-shrink: 0;
   }
-  h1 {
-    margin: 0 0 6px;
-    font-size: 17px;
-    font-weight: 650;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .toolbar:not(.sub) {
+    container: runbar / inline-size;
+  }
+  .toolbar > :global(*) {
+    flex-shrink: 0;
+  }
+  .toolbar > .title {
+    flex-shrink: 1;
+  }
+  /* The branch gives way before the run name. */
+  .toolbar > .meta {
+    flex-shrink: 1000;
+  }
+  .more {
+    display: none;
+  }
+  @container runbar (max-width: 640px) {
+    .lo {
+      display: none;
+    }
+    .more {
+      display: inline-flex;
+    }
+  }
+  .toolbar > .icon {
+    font-size: var(--fs-md);
   }
   .num {
     color: var(--muted);
     font-weight: 400;
-    font-size: 14px;
   }
-  .meta {
+  .chip.st {
+    color: var(--muted);
+  }
+  .chip.st.r-succeeded {
+    color: var(--add);
+  }
+  .chip.st.r-partial {
+    color: var(--amber);
+  }
+  .chip.st.r-failed {
+    color: var(--del);
+  }
+  .chip.st.s-running {
+    color: var(--blue);
+  }
+  .state.delay {
+    animation: tern-fade-in 150ms var(--ease-out) 300ms both;
+  }
+  .head {
+    max-width: 900px;
+    padding-bottom: var(--s4);
+    border-bottom: 1px solid var(--line);
+  }
+  .info {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 12px;
+    gap: var(--s2) var(--s4);
     align-items: center;
     margin: 0;
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
   }
-  .title {
-    margin: 8px 0 0;
+  .msg {
+    margin: var(--s3) 0 0;
   }
   .sha {
-    color: var(--amber);
-    font-size: 12px;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 12px;
-  }
-  .btn {
-    font-size: 12px;
-    padding: 3px 10px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
     color: var(--muted);
   }
-  .btn:hover:not(:disabled) {
+  .sha:hover {
     color: var(--text);
-  }
-  .btn:disabled {
-    opacity: 0.45;
+    text-decoration: underline;
   }
   .steps {
     max-width: 900px;
-    padding-top: 10px;
-  }
-  .all {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    font-size: 12px;
-    color: var(--muted);
-    margin: 0 0 8px;
-  }
-  .all input {
-    accent-color: var(--amber);
-    margin: 0;
+    padding-top: var(--s3);
   }
   .step {
     display: flex;
-    gap: 8px;
+    gap: var(--s3);
     align-items: center;
-    padding: 4px 12px;
-    border-radius: 5px;
+    min-height: var(--h-row);
+    padding: 0 var(--s4);
+    border-radius: var(--r-sm);
   }
   .step.k-stage {
     font-weight: 600;
-    margin-top: 6px;
+    margin-top: var(--s2);
   }
   .step:hover {
     background: var(--hover);
@@ -206,17 +265,13 @@
   }
   .issue {
     display: flex;
-    gap: 8px;
-    padding: 2px 12px 4px;
-    font-size: 12px;
+    gap: var(--s3);
+    padding: 2px var(--s4) var(--s1);
+    font-size: var(--fs-sm);
   }
   .more {
-    font-size: 12px;
-    color: var(--blue);
-    padding: 2px 0 6px;
-  }
-  .more:hover {
-    text-decoration: underline;
+    font-size: var(--fs-sm);
+    padding: 2px 0 var(--s2);
   }
   .ikind {
     flex-shrink: 0;
@@ -256,15 +311,5 @@
     50% {
       opacity: 0.3;
     }
-  }
-  .note {
-    color: var(--muted);
-    margin: 16px 0;
-  }
-  .note.err {
-    color: var(--del);
-    font-family: var(--mono);
-    font-size: 12px;
-    white-space: pre-wrap;
   }
 </style>

@@ -73,7 +73,7 @@
     if (k === "ArrowDown" || k === "j") move(1);
     else if (k === "ArrowUp" || k === "k") move(-1);
     else if (k === "Enter" && sel) openUrl(sel.url);
-    else if (k === "c" && sel) app.copyTicketForAgent(sel);
+    else if (k === "c" && sel) copyForAgent(sel);
     else if (k === "b" && sel) app.copyValue(app.ticketBranch(sel), "the branch name");
     else if (k === "/") filterEl?.focus();
     else if (k === "Escape") app.closeTickets();
@@ -165,6 +165,59 @@
   const kindTone = (k: string) =>
     /bug/i.test(k) ? "bug" : /story/i.test(k) ? "story" : /feature|epic/i.test(k) ? "feature" : /issue/i.test(k) ? "issue" : "task";
   const providerName = (t: Ticket) => (t.provider === "azdo" ? "Azure DevOps" : "GitHub");
+
+  async function copyForAgent(t: Ticket) {
+    if (!app.ticketDetails[t.key]?.data) await app.loadTicketDetail(t);
+    app.copyTicketForAgent(t);
+  }
+
+  function rowMenu(e: MouseEvent, t: Ticket) {
+    app.showMenu(e, `#${t.number} ${t.title}`, [
+      { label: "Open in browser", hint: "Enter", run: () => openUrl(t.url) },
+      "sep",
+      { label: "Copy for agent", hint: "C", run: () => copyForAgent(t) },
+      { label: "Copy branch name", hint: "B", run: () => app.copyValue(app.ticketBranch(t), "the branch name") },
+      { label: "Copy link", run: () => app.copyValue(t.url) },
+      { label: `Copy #${t.number}`, run: () => app.copyValue(String(t.number), `#${t.number}`) },
+    ]);
+  }
+
+  // The list and detail split: drag the line between them. Remembered across restarts.
+  const W_MIN = 280;
+  const W_MAX = 560;
+  const W_KEY = "scout.ticketsW";
+  const clampW = (n: number) => Math.max(W_MIN, Math.min(W_MAX, n));
+  let listW = $state(
+    (() => {
+      try {
+        const n = Number(localStorage.getItem(W_KEY));
+        return n ? clampW(n) : 380;
+      } catch {
+        return 380;
+      }
+    })(),
+  );
+  function saveW() {
+    try {
+      localStorage.setItem(W_KEY, String(Math.round(listW)));
+    } catch {}
+  }
+  function dragW(e: PointerEvent) {
+    const startX = e.clientX;
+    const start = listW;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => (listW = clampW(start + ev.clientX - startX));
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      saveW();
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+  /** The source choice fits next to the filter only when the list is wide. */
+  const segInline = $derived(listW >= 440);
 </script>
 
 {#snippet kindIcon(kind: string)}
@@ -184,56 +237,65 @@
   </svg>
 {/snippet}
 
+{#snippet sourceSeg()}
+  <div class="seg" role="group" aria-label="Source">
+    {#each [["all", "All", sources.azdo + sources.github], ["azdo", "Azure DevOps", sources.azdo], ["github", "GitHub", sources.github]] as [id, label, n]}
+      <button class:on={source === id} aria-pressed={source === id} onclick={() => (source = id as typeof source)}>{label} <span class="badge">{n}</span></button>
+    {/each}
+  </div>
+{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<section class="tickets" aria-label="My tickets" onkeydown={onKey}>
+<section class="tickets" aria-label="My tickets" onkeydown={onKey} style:--lw="{listW}px">
   <div class="list-side">
-    <header class="lhead">
-      <div class="titleline">
-        <h2>My tickets</h2>
-        <span class="count mono">{app.tickets.items.length}</span>
-        <span class="grow"></span>
-        {#if app.tickets.at}<span class="faint when">updated {agoIso(new Date(app.tickets.at).toISOString())}</span>{/if}
-        <button class="icon" class:spin={app.tickets.loading} onclick={() => app.loadTickets(true)} aria-label="Refresh tickets"
-          use:hover={() => ({ title: app.tickets.loading ? "Loading…" : "Refresh", text: "Tickets also refresh every 5 minutes while this view is open." })}>
-          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
-        </button>
-      </div>
-      <input class="filter" bind:this={filterEl} bind:value={filter} placeholder="Filter by title, number, tag, or project  ( / )" spellcheck="false" aria-label="Filter tickets" />
-      {#if sources.azdo && sources.github}
-        <div class="chips" role="group" aria-label="Source">
-          {#each [["all", "All", sources.azdo + sources.github], ["azdo", "Azure DevOps", sources.azdo], ["github", "GitHub", sources.github]] as [id, label, n]}
-            <button class="chip" class:on={source === id} onclick={() => (source = id as typeof source)}>{label} <span class="faint">{n}</span></button>
-          {/each}
-        </div>
-      {/if}
-    </header>
+    <div class="toolbar">
+      <span class="title">My tickets</span>
+      <span class="badge">{app.tickets.items.length}</span>
+      <span class="grow"></span>
+      {#if app.tickets.at}<span class="meta">updated {agoIso(new Date(app.tickets.at).toISOString())}</span>{/if}
+      <button class="icon-btn" class:spin={app.tickets.loading} onclick={() => app.loadTickets(true)} aria-label="Refresh tickets"
+        use:hover={() => ({ title: app.tickets.loading ? "Loading…" : "Refresh", text: "Tickets also refresh every 5 minutes while this view is open." })}>
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      </button>
+    </div>
+    <div class="toolbar sub">
+      <input class="field grow" bind:this={filterEl} bind:value={filter} placeholder="Filter tickets  /" spellcheck="false" aria-label="Filter tickets" />
+      {#if sources.azdo && sources.github && segInline}{@render sourceSeg()}{/if}
+    </div>
+    {#if sources.azdo && sources.github && !segInline}
+      <div class="toolbar sub">{@render sourceSeg()}</div>
+    {/if}
 
     <div class="list" bind:this={listEl} tabindex="0" role="listbox" aria-label="Tickets" aria-activedescendant={sel ? "t-" + sel.number : undefined}>
       {#each app.tickets.errors as er}
-        <div class="err">
-          <b>{er.source}</b>
-          <p class="mono">{er.message}</p>
+        <div class="state inline">
+          <span class="state-title">{er.source}</span>
+          <pre>{er.message}</pre>
           <p>{er.source.startsWith("GitHub") ? "Check that gh is signed in: run gh auth login in a terminal." : "Check that az is signed in: run az login in a terminal."}</p>
+          <div class="actions"><button class="btn sm" onclick={() => app.loadTickets(true)}>Try again</button></div>
         </div>
       {/each}
       {#if app.tickets.loading && !app.tickets.items.length}
-        {#each [0, 1, 2, 3] as i}
-          <div class="skel" style:--d="{i * 80}ms"><span></span><span></span></div>
+        {#each [0, 1, 2, 3, 4] as i}
+          <div class="skel-row" aria-hidden="true"><span class="skeleton" style:width="{82 - i * 7}%"></span><span class="skeleton short"></span></div>
         {/each}
       {:else if !app.tickets.items.length && !app.tickets.errors.length && app.tickets.at}
-        <div class="empty">
-          <p>No open tickets are assigned to you.</p>
-          <p class="faint">Tern looks for Azure DevOps work items in the organizations your repos use, and GitHub issues assigned to you.</p>
+        <div class="state">
+          <span class="state-title">No open tickets are assigned to you</span>
+          <p>Tern looks for Azure DevOps work items in the organizations your projects use, and GitHub issues assigned to you.</p>
         </div>
       {:else if app.tickets.items.length && !shown.length}
-        <p class="empty faint">No tickets match “{filter}”.</p>
+        <div class="state">
+          <p>No tickets match “{filter}”.</p>
+          <div class="actions"><button class="btn sm" onclick={() => (filter = "")}>Clear the filter</button></div>
+        </div>
       {/if}
 
       {#each groups as [state, ts] (state)}
-        <div class="group"><span class="dot r{stateRank(state)}"></span>{state}<span class="faint">{ts.length}</span></div>
+        <div class="section-label"><span class="dot r{stateRank(state)}"></span>{state}<span class="badge">{ts.length}</span></div>
         {#each ts as t (t.key)}
           <button class="row" class:on={t.key === app.ticketSel} data-key={t.key} id="t-{t.number}" role="option" aria-selected={t.key === app.ticketSel}
-            onclick={() => app.selectTicket(t.key)} ondblclick={() => openUrl(t.url)} tabindex="-1">
+            onclick={() => app.selectTicket(t.key)} ondblclick={() => openUrl(t.url)} oncontextmenu={(e) => rowMenu(e, t)} tabindex="-1">
             {@render kindIcon(t.kind)}
             <span class="rmain">
               <span class="rtitle">{t.title}</span>
@@ -241,7 +303,7 @@
                 <span class="mono num">#{t.number}</span>
                 {#if t.priority != null}<span class="prio p{Math.min(t.priority, 4)}">P{t.priority}</span>{/if}
                 <span class="faint">{t.project}{t.iteration ? ` · ${t.iteration}` : ""}</span>
-                {#each t.tags.slice(0, 2) as tag}<span class="tag">{tag}</span>{/each}
+                {#each t.tags.slice(0, 2) as tag}<span class="chip">{tag}</span>{/each}
               </span>
             </span>
             <span class="age faint">{agoIso(t.changed)}</span>
@@ -250,85 +312,104 @@
       {/each}
     </div>
     <footer class="keys faint">
-      <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>C</kbd> copy for agent</span><span><kbd>B</kbd> branch name</span>
+      <span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>C</kbd> copy for agent</span><span><kbd>B</kbd> branch name</span>
     </footer>
   </div>
 
-  <div class="sep" aria-hidden="true"></div>
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div class="split" role="separator" aria-orientation="vertical" aria-label="Resize the ticket list" onpointerdown={dragW}
+    ondblclick={() => ((listW = 380), saveW())}></div>
 
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-  <article class="detail" bind:this={detailEl} onclick={onBodyClick}>
+  <article class="detail">
     {#if !sel}
-      <div class="none">
-        {#if app.tickets.loading}<p class="faint">Loading your tickets…</p>{:else}<p class="faint">Pick a ticket on the left.</p>{/if}
-      </div>
+      {#if app.tickets.loading}
+        <div class="state"><p>Loading your tickets…</p></div>
+      {:else}
+        <div class="state"><p>Pick a ticket on the left.</p></div>
+      {/if}
     {:else}
       {#key sel.key}
-        <div class="dwrap">
-          <div class="dtop">
-            <span class="pill kindpill k-{kindTone(sel.kind)}">{@render kindIcon(sel.kind)}{sel.kind}</span>
-            <button class="pill mono idpill" onclick={() => app.copyValue(String(sel.number), `#${sel.number}`)} title="Copy the number">#{sel.number}</button>
-            <span class="pill statepill r{stateRank(sel.state)}"><span class="dot r{stateRank(sel.state)}"></span>{sel.state}</span>
-            {#if sel.priority != null}<span class="pill prio p{Math.min(sel.priority, 4)}">Priority {sel.priority}</span>{/if}
-            <span class="grow"></span>
-            <span class="faint src">{providerName(sel)}</span>
+        <div class="toolbar dbar">
+          <div class="dchips">
+            <span class="chip lo k-{kindTone(sel.kind)}">{@render kindIcon(sel.kind)}<span class="ktext">{sel.kind}</span></span>
+            <button class="chip mono idchip" onclick={() => app.copyValue(String(sel.number), `#${sel.number}`)}
+              use:hover={() => ({ title: `Copy #${sel.number}` })}>#{sel.number}</button>
+            <span class="chip lo"><span class="dot r{stateRank(sel.state)}"></span>{sel.state}</span>
+            {#if sel.priority != null}<span class="chip lo prio-chip p{Math.min(sel.priority, 4)}">Priority {sel.priority}</span>{/if}
           </div>
-          <h1>{sel.title}</h1>
-          <dl class="facts">
-            <dt>Project</dt><dd>{sel.project}{sel.area && sel.area !== sel.project ? ` / ${sel.area}` : ""}</dd>
-            {#if sel.iteration}<dt>Sprint</dt><dd>{sel.iteration}</dd>{/if}
-            {#if detail?.data?.assignedTo}<dt>Assigned</dt><dd>{detail.data.assignedTo}</dd>{/if}
-            {#if detail?.data?.createdBy}<dt>Created</dt><dd>{detail.data.createdBy}, {agoIso(detail.data.created)}</dd>{/if}
-            <dt>Updated</dt><dd>{agoIso(sel.changed)}</dd>
-            {#if sel.tags.length}<dt>Tags</dt><dd class="tags">{#each sel.tags as tag}<span class="tag">{tag}</span>{/each}</dd>{/if}
-          </dl>
-          <div class="actions">
-            <button class="btn primary" onclick={() => openUrl(sel.url)}>Open in {providerName(sel)}</button>
-            <button class="btn" onclick={() => app.copyTicketForAgent(sel)} disabled={!detail?.data}>Copy for an agent</button>
-            <button class="btn" onclick={() => app.copyValue(app.ticketBranch(sel), "the branch name")}
-              use:hover={() => ({ title: "Copy branch name", text: app.ticketBranch(sel) })}>Copy branch name</button>
-            <button class="btn" onclick={() => app.copyValue(sel.url)}>Copy link</button>
-          </div>
+          <span class="grow"></span>
+          <button class="btn ghost sm" onclick={() => copyForAgent(sel)}
+            use:hover={() => ({ title: "Copy for agent", text: "The title, fields, and description as plain text.", hint: "Key: C" })}>Copy for agent</button>
+          <button class="btn ghost sm lo2" onclick={() => app.copyValue(app.ticketBranch(sel), "the branch name")}
+            use:hover={() => ({ title: "Copy branch name", text: app.ticketBranch(sel), hint: "Key: B" })}>Copy branch name</button>
+          <button class="btn ghost sm lo2" onclick={() => app.copyValue(sel.url)}>Copy link</button>
+          <button class="btn primary sm" onclick={() => openUrl(sel.url)} use:hover={() => ({ title: `Open in ${providerName(sel)}`, hint: "Key: Enter" })}>Open in {providerName(sel)}</button>
+        </div>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions, a11y_no_static_element_interactions -->
+        <div class="dscroll" bind:this={detailEl} onclick={onBodyClick}>
+          <div class="dwrap">
+            <h1>{sel.title}</h1>
+            <dl class="facts">
+              <dt>Project</dt><dd>{sel.project}{sel.area && sel.area !== sel.project ? ` / ${sel.area}` : ""}</dd>
+              {#if sel.iteration}<dt>Sprint</dt><dd>{sel.iteration}</dd>{/if}
+              {#if detail?.data?.assignedTo}<dt>Assigned</dt><dd>{detail.data.assignedTo}</dd>{/if}
+              {#if detail?.data?.createdBy}<dt>Created</dt><dd>{detail.data.createdBy}, {agoIso(detail.data.created)}</dd>{/if}
+              <dt>Updated</dt><dd>{agoIso(sel.changed)}</dd>
+              <dt>Source</dt><dd>{providerName(sel)}</dd>
+              {#if sel.tags.length}<dt>Tags</dt><dd class="tags">{#each sel.tags as tag}<span class="chip">{tag}</span>{/each}</dd>{/if}
+            </dl>
 
-          {#if detail?.loading && !detail.data}
-            <div class="skel big"><span></span><span></span><span></span></div>
-          {:else if detail?.error}
-            <p class="derr mono">{detail.error}</p>
-            <button class="link" onclick={() => app.loadTicketDetail(sel, true)}>Try again</button>
-          {:else if detail?.data}
-            {@const d = detail.data}
-            {#if !d.sections.length}<p class="faint">This ticket has no description.</p>{/if}
-            {#each d.sections as s, i}
-              <section class="sec">
-                <h3>{s.title}</h3>
-                <div class="md">{@html html?.key === sel.key ? (html.sections[i] ?? "") : ""}</div>
-              </section>
-            {/each}
-            {#if d.links.length}
-              <section class="sec">
-                <h3>Links</h3>
-                <ul class="links">
-                  {#each d.links as l}
-                    <li>
-                      <span class="lk lk-{l.kind}">{l.kind === "commit" ? "◆" : l.kind === "pr" ? "⇄" : l.kind === "branch" ? "⑂" : l.kind === "parent" ? "↑" : l.kind === "child" ? "↓" : "↔"}</span>
-                      {#if l.url}<a href={l.url}>{l.label}</a>{:else}<span>{l.label}</span>{/if}
-                    </li>
+            {#if detail?.loading && !detail.data}
+              <div class="skel-block" aria-hidden="true"><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div>
+            {:else if detail?.error}
+              <div class="state inline">
+                <span class="state-title">Could not load this ticket</span>
+                <pre>{detail.error}</pre>
+                <div class="actions"><button class="btn sm" onclick={() => app.loadTicketDetail(sel, true)}>Try again</button></div>
+              </div>
+            {:else if detail?.data}
+              {@const d = detail.data}
+              {#if !d.sections.length}
+                <div class="state inline"><span class="state-title">No description</span><p>This ticket has no description yet.</p></div>
+              {/if}
+              {#each d.sections as s, i}
+                <section class="sec">
+                  <h3>{s.title}</h3>
+                  <div class="md">{@html html?.key === sel.key ? (html.sections[i] ?? "") : ""}</div>
+                </section>
+              {/each}
+              {#if d.links.length}
+                <section class="sec">
+                  <h3>Links</h3>
+                  <ul class="links">
+                    {#each d.links as l}
+                      <li>
+                        <span class="lk lk-{l.kind}">{l.kind === "commit" ? "◆" : l.kind === "pr" ? "⇄" : l.kind === "branch" ? "⑂" : l.kind === "parent" ? "↑" : l.kind === "child" ? "↓" : "↔"}</span>
+                        {#if l.url}<a href={l.url}>{l.label}</a>{:else}<span>{l.label}</span>{/if}
+                      </li>
+                    {/each}
+                  </ul>
+                </section>
+              {/if}
+              {#if d.comments.length}
+                <section class="sec">
+                  <h3>Comments <span class="badge">{d.comments.length}</span></h3>
+                  {#each d.comments as c, i}
+                    <div class="comment">
+                      <div class="chead"><b>{c.author}</b><span class="faint">{agoIso(c.created)}</span></div>
+                      <div class="md">{@html html?.key === sel.key ? (html.comments[i] ?? "") : ""}</div>
+                    </div>
                   {/each}
-                </ul>
-              </section>
+                </section>
+              {/if}
+            {:else}
+              <div class="state inline">
+                <span class="state-title">No details yet</span>
+                <p>Tern has not read the description and comments of this ticket.</p>
+                <div class="actions"><button class="btn sm" onclick={() => app.loadTicketDetail(sel, true)}>Load the details</button></div>
+              </div>
             {/if}
-            {#if d.comments.length}
-              <section class="sec">
-                <h3>Comments <span class="faint">{d.comments.length}</span></h3>
-                {#each d.comments as c, i}
-                  <div class="comment">
-                    <div class="chead"><b>{c.author}</b><span class="faint">{agoIso(c.created)}</span></div>
-                    <div class="md">{@html html?.key === sel.key ? (html.comments[i] ?? "") : ""}</div>
-                  </div>
-                {/each}
-              </section>
-            {/if}
-          {/if}
+          </div>
         </div>
       {/key}
     {/if}
@@ -350,7 +431,8 @@
     grid-column: 3 / -1;
     grid-row: 2;
     display: grid;
-    grid-template-columns: minmax(320px, 400px) 1px minmax(0, 1fr);
+    grid-template-columns: var(--lw, 380px) 1px minmax(0, 1fr);
+    height: 100%;
     min-height: 0;
     min-width: 0;
     background: var(--bg);
@@ -359,53 +441,26 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
     background: var(--panel);
   }
-  .sep {
+  .list-side .toolbar.sub .field {
+    min-width: 80px;
+  }
+  /* The line between the list and the detail. A wider invisible strip makes it easy to grab. */
+  .split {
+    position: relative;
     background: var(--line);
+    cursor: col-resize;
   }
-  .lhead {
-    padding: 12px 12px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    border-bottom: 1px solid var(--line);
+  .split::after {
+    content: "";
+    position: absolute;
+    inset: 0 -3px;
+    z-index: 1;
   }
-  .titleline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  h2 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 650;
-  }
-  .count {
-    font-size: 11px;
-    color: var(--muted);
-    background: var(--raised);
-    border-radius: 10px;
-    padding: 0 7px;
-    line-height: 18px;
-  }
-  .grow {
-    flex: 1;
-  }
-  .when {
-    font-size: 11.5px;
-  }
-  .icon {
-    width: 26px;
-    height: 26px;
-    display: grid;
-    place-items: center;
-    border-radius: var(--radius);
-    color: var(--muted);
-  }
-  .icon:hover {
-    background: var(--hover);
-    color: var(--text);
+  .split:hover {
+    background: var(--line-strong);
   }
   .spin svg {
     animation: spin 0.9s linear infinite;
@@ -415,54 +470,16 @@
       transform: rotate(360deg);
     }
   }
-  .filter {
-    height: 30px;
-    padding: 0 10px;
-    border-radius: 7px;
-    border: 1px solid var(--line);
-    background: var(--bg);
-    color: var(--text);
-    font: inherit;
-    font-size: 12.5px;
-    outline: none;
-  }
-  .filter:focus {
-    border-color: var(--amber);
-  }
-  .filter::placeholder {
-    color: var(--muted);
-  }
-  .chips {
-    display: flex;
-    gap: 4px;
-  }
-  .chip {
-    font-size: 12px;
-    padding: 2px 9px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .chip.on {
-    color: var(--text);
-    background: var(--raised);
-    border-color: var(--line-strong);
-  }
 
   .list {
     flex: 1;
     overflow-y: auto;
-    padding: 4px 6px 10px;
+    padding: var(--s1) var(--s2) var(--s3);
     outline: none;
   }
-  .group {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 12px 8px 4px;
-    font-size: 11.5px;
-    font-weight: 600;
-    color: var(--muted);
+  .list .section-label {
+    padding: var(--s3) var(--s3) 0;
+    gap: var(--s2);
   }
   .dot {
     width: 7px;
@@ -475,15 +492,15 @@
     background: var(--blue);
   }
   .dot.r1 {
-    background: var(--amber);
+    background: var(--muted);
   }
   .row {
     width: 100%;
     display: flex;
     align-items: flex-start;
-    gap: 9px;
-    padding: 7px 8px;
-    border-radius: 7px;
+    gap: var(--s3);
+    padding: var(--s2) var(--s3);
+    border-radius: var(--radius);
     text-align: left;
     color: var(--text);
   }
@@ -494,7 +511,7 @@
     background: var(--raised);
   }
   .list:focus-visible .row.on {
-    box-shadow: inset 0 0 0 1px var(--amber);
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
   .kind {
     flex-shrink: 0;
@@ -504,7 +521,7 @@
     color: var(--del);
   }
   .k-task {
-    color: var(--amber);
+    color: var(--muted);
   }
   .k-story {
     color: var(--blue);
@@ -520,10 +537,10 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
   }
   .rtitle {
-    font-size: 13px;
+    font-size: var(--fs-md);
     line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -534,173 +551,154 @@
   .rmeta {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11.5px;
+    gap: var(--s2);
+    font-size: var(--fs-xs);
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
   }
   .num {
     color: var(--muted);
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
   .prio {
-    font-size: 10.5px;
+    font-size: var(--fs-xs);
     font-weight: 600;
-    padding: 0 5px;
-    border-radius: 4px;
+    padding: 0 var(--s1);
+    border-radius: var(--r-sm);
     line-height: 16px;
     color: var(--muted);
     background: var(--raised);
   }
-  .prio.p1 {
+  .prio.p1,
+  .prio-chip.p1 {
     color: var(--del);
     background: var(--del-bg);
-  }
-  .prio.p2 {
-    color: var(--amber);
-    background: var(--amber-soft);
-  }
-  .tag {
-    font-size: 10.5px;
-    padding: 0 6px;
-    border-radius: 4px;
-    line-height: 16px;
-    border: 1px solid var(--line);
-    color: var(--muted);
+    border-color: transparent;
   }
   .age {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     flex-shrink: 0;
     margin-top: 2px;
-  }
-  .err {
-    margin: 8px 4px;
-    padding: 10px 12px;
-    border-radius: 7px;
-    background: var(--del-bg);
-    font-size: 12px;
-  }
-  .err b {
-    color: var(--del);
-  }
-  .err p {
-    margin: 4px 0 0;
-  }
-  .err .mono {
-    font-size: 11.5px;
-    word-break: break-word;
-  }
-  .empty {
-    padding: 24px 12px;
-    font-size: 13px;
-  }
-  .empty p {
-    margin: 0 0 6px;
   }
   .keys {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 12px;
-    padding: 7px 12px;
+    gap: var(--s1) var(--s4);
+    padding: var(--s2) var(--s4);
     border-top: 1px solid var(--line);
-    font-size: 11px;
-  }
-  .keys kbd {
-    margin-right: 3px;
+    font-size: var(--fs-xs);
   }
 
-  /* Loading: grey bars in the shape of the content, not a spinner. */
-  .skel {
+  /* Loading: grey bars in the shape of the rows. */
+  .skel-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 10px;
+    gap: var(--s2);
+    padding: var(--s3) var(--s3) var(--s3) calc(var(--s6) + var(--s2));
   }
-  .skel span {
+  .skel-row .skeleton {
     height: 10px;
-    border-radius: 4px;
-    background: var(--raised);
-    animation: fade 1.2s ease-in-out infinite;
-    animation-delay: var(--d, 0ms);
   }
-  .skel span:nth-child(1) {
+  .skel-row .skeleton.short {
+    width: 40%;
+  }
+  .skel-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s4);
+    padding: var(--s3) 0;
+  }
+  .skel-block .skeleton {
+    height: 10px;
+  }
+  .skel-block .skeleton:nth-child(2) {
     width: 85%;
   }
-  .skel span:nth-child(2) {
-    width: 45%;
-  }
-  .skel.big {
-    padding: 8px 0;
-    gap: 10px;
-  }
-  .skel.big span:nth-child(3) {
-    width: 70%;
-  }
-  @keyframes fade {
-    50% {
-      opacity: 0.45;
-    }
+  .skel-block .skeleton:nth-child(3) {
+    width: 60%;
   }
 
   .detail {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
-    overflow-y: auto;
-    user-select: text;
+    min-height: 0;
   }
-  .none {
-    height: 100%;
-    display: grid;
-    place-items: center;
+  .dbar {
+    gap: var(--s2);
   }
-  .dwrap {
-    max-width: 820px;
-    padding: 22px 32px 48px;
-    animation: tern-fade-in 150ms var(--ease-out);
+  /* Narrow details: the ticket number is the one chip that stays; the title below names the ticket.
+     Then the less used copy actions go (they stay in the right-click menu and on the keys). */
+  .dbar {
+    container: dbar / inline-size;
   }
-  .dtop {
+  @container dbar (max-width: 700px) {
+    .dchips .lo {
+      display: none;
+    }
+  }
+  @container dbar (max-width: 520px) {
+    .lo2 {
+      display: none;
+    }
+  }
+  .dchips {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--s1);
+    min-width: 0;
+    overflow: hidden;
   }
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11.5px;
-    line-height: 20px;
-    padding: 0 8px;
-    border-radius: 6px;
-    background: var(--raised);
+  .dchips .chip {
     color: var(--text);
   }
-  .kindpill :global(svg) {
+  .dchips .chip :global(svg) {
     width: 12px;
     height: 12px;
   }
-  .idpill {
+  .dchips .chip.k-bug :global(svg) {
+    color: var(--del);
+  }
+  .ktext {
+    color: var(--text);
+  }
+  .idchip {
+    cursor: pointer;
+  }
+  .idchip.chip {
     color: var(--muted);
   }
-  .idpill:hover {
-    color: var(--amber);
+  .idchip.chip:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
   }
-  .src {
-    font-size: 11.5px;
+  .dscroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    user-select: text;
+  }
+  .dwrap {
+    max-width: 820px;
+    padding: var(--s5) var(--s6) calc(var(--s6) * 2);
+    animation: tern-fade-in 150ms var(--ease-out);
   }
   h1 {
-    margin: 12px 0 14px;
-    font-size: 19px;
+    margin: 0 0 var(--s4);
+    font-size: var(--fs-xl);
     line-height: 1.35;
     font-weight: 650;
-    text-wrap: balance;
+    text-wrap: pretty;
   }
   .facts {
     display: grid;
     grid-template-columns: max-content 1fr;
-    gap: 5px 18px;
-    margin: 0 0 16px;
-    font-size: 12.5px;
+    gap: var(--s1) var(--s5);
+    margin: 0 0 var(--s5);
+    padding-bottom: var(--s5);
+    border-bottom: 1px solid var(--line);
+    font-size: var(--fs-sm);
   }
   .facts dt {
     color: var(--muted);
@@ -711,50 +709,19 @@
   .facts .tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--line);
-  }
-  .btn {
-    font-size: 12px;
-    padding: 4px 11px;
-    border-radius: var(--radius);
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .btn:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--line-strong);
-  }
-  .btn:disabled {
-    opacity: 0.45;
-  }
-  .btn.primary {
-    color: var(--on-accent);
-    background: var(--amber);
-    border-color: var(--amber);
-  }
-  .btn.primary:hover {
-    color: var(--on-accent);
+    gap: var(--s1);
   }
   .sec {
-    margin-top: 20px;
+    margin-top: var(--s5);
   }
   h3 {
-    margin: 0 0 8px;
-    font-size: 12.5px;
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    margin: 0 0 var(--s3);
+    font-size: var(--fs-sm);
     font-weight: 650;
     color: var(--muted);
-  }
-  .derr {
-    color: var(--del);
-    font-size: 12px;
-    margin: 16px 0 6px;
   }
   .links {
     list-style: none;
@@ -762,12 +729,12 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    font-size: 12.5px;
+    gap: var(--s1);
+    font-size: var(--fs-sm);
   }
   .links li {
     display: flex;
-    gap: 8px;
+    gap: var(--s3);
     align-items: center;
   }
   .lk {
@@ -779,7 +746,7 @@
     color: var(--blue);
   }
   .comment {
-    padding: 10px 0;
+    padding: var(--s3) 0;
     border-top: 1px solid var(--line);
   }
   .comment:first-of-type {
@@ -787,62 +754,62 @@
   }
   .chead {
     display: flex;
-    gap: 8px;
-    font-size: 12px;
-    margin-bottom: 4px;
+    gap: var(--s3);
+    font-size: var(--fs-sm);
+    margin-bottom: var(--s1);
   }
   .md {
-    font-size: 13.5px;
+    font-size: var(--fs-md);
     line-height: 1.6;
     overflow-wrap: anywhere;
     max-width: 72ch;
   }
   .md :global(p),
   .md :global(div) {
-    margin: 0 0 6px;
+    margin: 0 0 var(--s2);
   }
   /* Headings inside a ticket stay below the ticket's own title. */
   .md :global(h1),
   .md :global(h2),
   .md :global(h3),
   .md :global(h4) {
-    margin: 14px 0 6px;
+    margin: var(--s4) 0 var(--s2);
     font-weight: 650;
     line-height: 1.35;
     color: var(--text);
   }
   .md :global(h1) {
-    font-size: 15px;
+    font-size: var(--fs-lg);
   }
   .md :global(h2) {
-    font-size: 14px;
+    font-size: var(--fs-md);
   }
   .md :global(h3),
   .md :global(h4) {
-    font-size: 13.5px;
+    font-size: var(--fs-md);
   }
   .md :global(:first-child) {
     margin-top: 0;
   }
   .md :global(ul),
   .md :global(ol) {
-    margin: 4px 0 8px;
-    padding-left: 22px;
+    margin: var(--s1) 0 var(--s3);
+    padding-left: var(--s6);
   }
   .md :global(pre) {
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    padding: 10px 12px;
+    padding: var(--s3) var(--s4);
     overflow-x: auto;
-    font: 12.5px/1.5 var(--mono);
+    font: var(--fs-sm) / 1.5 var(--mono);
   }
   .md :global(code) {
     font-family: var(--mono);
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
     background: var(--panel);
-    padding: 1px 4px;
-    border-radius: 4px;
+    padding: 0 var(--s1);
+    border-radius: var(--r-sm);
   }
   .md :global(pre code) {
     background: none;
@@ -855,8 +822,8 @@
     display: block;
     max-width: 100%;
     height: auto;
-    margin: 8px 0;
-    border-radius: 8px;
+    margin: var(--s3) 0;
+    border-radius: var(--radius);
     border: 1px solid var(--line);
     cursor: zoom-in;
   }
@@ -867,6 +834,11 @@
     background: var(--raised);
     animation: fade 1.2s ease-in-out infinite;
     cursor: progress;
+  }
+  @keyframes fade {
+    50% {
+      opacity: 0.45;
+    }
   }
   .md :global(img.timg[data-state="ready"]) {
     animation: tern-fade-in 180ms var(--ease-out);
@@ -879,34 +851,34 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 48px;
+    gap: var(--s3);
+    padding: calc(var(--s6) * 2);
     background: rgb(0 0 0 / 0.72);
     cursor: zoom-out;
     animation: tern-fade-in 150ms var(--ease-out);
   }
   .zoom img {
     max-width: 100%;
-    max-height: calc(100% - 40px);
+    max-height: calc(100% - var(--h-bar));
     object-fit: contain;
-    border-radius: 8px;
+    border-radius: var(--radius);
     animation: tern-dialog-in 200ms var(--ease-out);
   }
   .zcap {
     margin: 0;
     color: #e6e8ec;
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
   }
   .zcap span {
     color: #9aa1ad;
-    margin-left: 10px;
+    margin-left: var(--s3);
   }
   .md :global(.img-link) {
     display: inline-block;
-    font-size: 12px;
-    padding: 2px 8px;
+    font-size: var(--fs-sm);
+    padding: var(--s1) var(--s3);
     border: 1px dashed var(--line-strong);
-    border-radius: 5px;
+    border-radius: var(--r-sm);
     text-decoration: none;
   }
   .md :global(table) {
@@ -915,19 +887,13 @@
   .md :global(td),
   .md :global(th) {
     border: 1px solid var(--line);
-    padding: 4px 8px;
+    padding: var(--s1) var(--s3);
   }
   .md :global(blockquote) {
     margin: 0;
-    padding-left: 12px;
+    padding-left: var(--s4);
     border-left: 3px solid var(--line-strong);
     color: var(--muted);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .skel span {
-      animation: none;
-    }
   }
   /* Cells wrap only at spaces and hyphens, so short columns like "ID" never break into letters. */
   .md :global(th),

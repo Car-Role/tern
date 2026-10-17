@@ -23,96 +23,63 @@
 </script>
 
 {#if req}
-  <div class="backdrop fx-fade" role="presentation" onmousedown={(e) => e.target === e.currentTarget && app.answer(false)}>
-    <div class="dialog fx-fade" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" tabindex="-1" onkeydown={onKey}>
-      <h2 id="confirm-title">{req.title}</h2>
-      <div class="scroll">
-      <p class="body">{req.body}</p>
-      {#if req.code}<pre class="code mono">{req.code}</pre>{/if}
+  <div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && app.answer(false)}>
+    <div class="dialog sm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" tabindex="-1" onkeydown={onKey}>
+      <div class="dialog-head"><h2 id="confirm-title">{req.title}</h2></div>
+      <div class="dialog-body">
+        <p class="body">{req.body}</p>
+        {#if req.code}<pre class="code mono">{req.code}</pre>{/if}
 
-      {#if req.warnings?.length}
-        <ul class="warnings">
-          {#each req.warnings as w}<li>{w}</li>{/each}
-        </ul>
-      {/if}
-
-      {#if req.list?.length}
-        <p class="label">{req.listLabel ?? ""}</p>
-        <ul class="projects">
-          {#each req.list as it}
-            <li class={it.tone ?? ""}><span class="pname">{it.name}</span><span class="pdetail">{it.detail}</span></li>
-          {/each}
-        </ul>
-      {/if}
-
-      {#if req.commits}
-        <p class="label">{req.commitsLabel}</p>
-        {#if req.commits.length}
-          <ol class="commits">
-            {#each req.commits.slice(0, 12) as c (c.sha)}
-              <li>
-                <span class="sha mono">{c.short}</span>
-                <span class="subject">{c.subject}</span>
-                <span class="meta faint">{c.author}, {ago(c.time)}</span>
-              </li>
-            {/each}
-          </ol>
-          {#if req.commits.length > 12}<p class="more faint">and {req.commits.length - 12} more</p>{/if}
+        {#if req.warnings?.length}
+          <ul class="warnings">
+            {#each req.warnings as w}<li>{w}</li>{/each}
+          </ul>
         {/if}
-      {/if}
 
+        {#if req.list?.length}
+          <p class="label">{req.listLabel ?? ""}</p>
+          <ul class="projects">
+            {#each req.list as it}
+              <li class={it.tone ?? ""}><span class="pname">{it.name}</span><span class="pdetail">{it.detail}</span></li>
+            {/each}
+          </ul>
+        {/if}
+
+        {#if req.commits}
+          <p class="label">{req.commitsLabel}</p>
+          {#if req.commits.length}
+            <ol class="commits">
+              {#each req.commits.slice(0, 12) as c (c.sha)}
+                <li>
+                  <span class="sha mono">{c.short}</span>
+                  <span class="subject">{c.subject}</span>
+                  <span class="meta faint">{c.author}, {ago(c.time)}</span>
+                </li>
+              {/each}
+            </ol>
+            {#if req.commits.length > 12}<p class="more faint">and {req.commits.length - 12} more</p>{/if}
+          {/if}
+        {/if}
       </div>
-      <div class="buttons">
+      <div class="dialog-foot">
         <button class="btn" bind:this={cancelBtn} onclick={() => app.answer(false)}>Cancel</button>
-        <button class="btn primary" bind:this={okBtn} disabled={!allowed} onclick={() => app.answer(true)}>{req.confirm}</button>
+        <button class="btn primary" class:danger={req.danger} bind:this={okBtn} disabled={!allowed} onclick={() => app.answer(true)}>{req.confirm}</button>
       </div>
     </div>
   </div>
 {/if}
 
 <style>
-  /* Opened with the mouse, now and then: a short entrance. Closing stays instant. */
-  .backdrop {
-    animation: tern-fade-in 150ms var(--ease-out);
-  }
   .dialog {
-    animation: tern-dialog-in 150ms var(--ease-out);
-  }
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: min(14vh, 80px) 16px 16px;
-    z-index: 20;
-  }
-  .dialog {
-    width: min(560px, 100%);
-    max-height: calc(100vh - min(14vh, 80px) - 16px);
-    display: flex;
-    flex-direction: column;
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
-    padding: 18px 20px 16px;
-    outline: none;
     user-select: text;
   }
-  h2 {
-    margin: 0 0 6px;
-    font-size: 15px;
-    font-weight: 650;
-  }
   .body {
-    margin: 0 0 12px;
+    margin: 0 0 var(--s4);
     color: var(--muted);
   }
   .code {
-    margin: -4px 0 12px;
-    padding: 8px 10px;
+    margin: 0 0 var(--s4);
+    padding: var(--s3) var(--s4);
     background: var(--bg);
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -120,40 +87,45 @@
     word-break: break-all;
   }
   .warnings {
-    margin: 0 0 12px;
-    padding: 8px 12px 8px 26px;
-    background: var(--amber-soft);
+    margin: 0 0 var(--s4);
+    padding: var(--s3) var(--s4) var(--s3) var(--s6);
+    background: var(--accent-soft);
     border-radius: var(--radius);
     color: var(--text);
   }
   .warnings li + li {
-    margin-top: 4px;
+    margin-top: var(--s1);
   }
   .label {
-    margin: 0 0 4px;
-    font-size: 12px;
+    margin: 0 0 var(--s1);
+    font-size: var(--fs-sm);
     font-weight: 600;
     color: var(--muted);
   }
-  .commits {
+  .commits,
+  .projects {
     list-style: none;
     margin: 0;
     padding: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius);
   }
-  .commits li {
+  .commits li,
+  .projects li {
     display: flex;
-    gap: 8px;
+    gap: var(--s3);
     align-items: baseline;
-    padding: 5px 10px;
+    padding: var(--s1) var(--s3);
+  }
+  .commits li {
     white-space: nowrap;
   }
-  .commits li + li {
+  .commits li + li,
+  .projects li + li {
     border-top: 1px solid var(--line);
   }
   .sha {
-    color: var(--amber);
+    color: var(--muted);
     flex-shrink: 0;
   }
   .subject {
@@ -163,30 +135,16 @@
     min-width: 0;
   }
   .meta {
-    font-size: 11.5px;
+    font-size: var(--fs-xs);
     flex-shrink: 0;
   }
   .more {
-    margin: 4px 0 0;
-    font-size: 12px;
+    margin: var(--s1) 0 0;
+    font-size: var(--fs-sm);
   }
   .projects {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
     max-height: 40vh;
     overflow-y: auto;
-  }
-  .projects li {
-    display: flex;
-    gap: 12px;
-    padding: 5px 10px;
-    align-items: baseline;
-  }
-  .projects li + li {
-    border-top: 1px solid var(--line);
   }
   .pname {
     font-weight: 600;
@@ -196,46 +154,12 @@
   .pdetail {
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 11.5px;
+    font-size: var(--fs-xs);
   }
   .projects li.warn .pdetail {
-    color: var(--amber);
+    color: var(--accent);
   }
   .projects li.skip {
     opacity: 0.55;
-  }
-  .scroll {
-    overflow-y: auto;
-    min-height: 0;
-    flex: 1;
-  }
-  .buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 16px;
-    flex-shrink: 0;
-  }
-  .btn {
-    padding: 5px 14px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--muted);
-  }
-  .btn:hover {
-    color: var(--text);
-    border-color: var(--line-strong);
-  }
-  .btn.primary {
-    background: var(--amber);
-    border-color: var(--amber);
-    color: var(--on-accent);
-    font-weight: 600;
-  }
-  .btn.primary:disabled {
-    background: var(--raised);
-    border-color: var(--line);
-    color: var(--faint);
-    cursor: default;
   }
 </style>

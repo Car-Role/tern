@@ -6,6 +6,7 @@
   import { absolutePath, ago, agoIso, baseName, dirName } from "../lib/format";
   import type { Branch, Commit, Issue, PullRequest, RepoEntry, SearchHit } from "../lib/types";
   import { definitionPattern, isCodeFile } from "../lib/defs";
+  import { hover } from "../lib/hover";
 
   type Kind = "all" | "code" | "files" | "commits" | "branches" | "work";
   type Found = {
@@ -73,7 +74,7 @@
   const mains = (list: RepoEntry[]) => list.filter((r) => !r.parent && !app.isHidden(r));
   const scopes = $derived([
     ...(viewRel && app.current ? [{ id: "file", label: `This file (${baseName(viewRel)})` }] : []),
-    ...(app.current ? [{ id: "repo", label: app.repo?.name ?? "This repo" }] : []),
+    ...(app.current ? [{ id: "repo", label: app.repo?.name ?? "This project" }] : []),
     { id: "space", label: app.activeSpace ? app.activeSpace.name : "This space" },
     { id: "all", label: "All" },
     ...sets.map((s) => ({ id: "set:" + s.name, label: s.name })),
@@ -297,7 +298,7 @@
     { id: "files", label: "Files" },
     { id: "commits", label: "Commits" },
     { id: "branches", label: "Branches" },
-    { id: "work", label: "PRs & issues" },
+    { id: "work", label: "PRs and issues" },
   ];
 
   function onKey(e: KeyboardEvent) {
@@ -368,7 +369,7 @@
     scope = "set:" + name;
     setName = "";
     picking = false;
-    app.notify(`Saved the set "${name}" with ${picked.length} repos`, "ok");
+    app.notify(`Saved the set "${name}" with ${picked.length} projects`, "ok");
   }
   function deleteSet(name: string) {
     sets = sets.filter((s) => s.name !== name);
@@ -392,66 +393,78 @@
 </script>
 
 <div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && (app.overlay = null)}>
-  <div class="search" role="dialog" aria-label="Search across repos">
+  <div class="dialog xl search" role="dialog" aria-modal="true" aria-label="Search across projects">
     <div class="bar">
-      <input bind:this={input} bind:value={query} onkeydown={onKey} placeholder="Search code, files, commits, branches, PRs, and issues" spellcheck="false" aria-label="Search" />
-      <button class="opt" class:on={matchCase} onclick={() => { matchCase = !matchCase; keep("case", matchCase); input?.focus(); }} title="Match case (Alt+C)" aria-pressed={matchCase}>Aa</button>
-      <button class="opt" class:on={word} onclick={() => { word = !word; keep("word", word); input?.focus(); }} title="Whole word (Alt+W)" aria-pressed={word}><u>W</u></button>
-      <button class="opt mono" class:on={regex} onclick={() => { regex = !regex; keep("regex", regex); input?.focus(); }} title="Regular expression (Alt+R)" aria-pressed={regex}>.*</button>
+      <input class="field query" bind:this={input} bind:value={query} onkeydown={onKey} placeholder="Search code, files, commits, branches, pull requests, and issues" spellcheck="false" aria-label="Search" />
+      <button class="btn sm opt" class:on={matchCase} onclick={() => { matchCase = !matchCase; keep("case", matchCase); input?.focus(); }}
+        use:hover={() => ({ title: "Match case", hint: "Alt C" })} aria-label="Match case" aria-pressed={matchCase}>Aa</button>
+      <button class="btn sm opt" class:on={word} onclick={() => { word = !word; keep("word", word); input?.focus(); }}
+        use:hover={() => ({ title: "Whole word", hint: "Alt W" })} aria-label="Whole word" aria-pressed={word}><u>W</u></button>
+      <button class="btn sm opt mono" class:on={regex} onclick={() => { regex = !regex; keep("regex", regex); input?.focus(); }}
+        use:hover={() => ({ title: "Regular expression", hint: "Alt R" })} aria-label="Regular expression" aria-pressed={regex}>.*</button>
     </div>
 
-    <div class="scopes" role="radiogroup" aria-label="Where to search">
+    <div class="scopes">
       <span class="label">In</span>
-      {#each scopes as s}
-        <button role="radio" class="scope" class:on={scope === s.id} aria-checked={scope === s.id}
-          onclick={() => { scope = s.id; picking = s.id === "pick"; input?.focus(); }}
-          oncontextmenu={(e) => s.id.startsWith("set:") && app.showMenu(e, s.label, [
-            { label: "Change this set", run: () => editSet(s.label) },
-            { label: "Delete this set", run: () => deleteSet(s.label), danger: true },
-          ])}>
-          {s.label}
-        </button>
-      {/each}
-      <span class="grow"></span>
-      <span class="faint">{repos.length} {repos.length === 1 ? "repo" : "repos"}{#if pending} — searching {pending}…{/if}</span>
+      <div class="scroller">
+        <div class="seg" role="radiogroup" aria-label="Where to search">
+          {#each scopes as s}
+            <button role="radio" class:on={scope === s.id} aria-checked={scope === s.id}
+              onclick={() => { scope = s.id; picking = s.id === "pick"; input?.focus(); }}
+              oncontextmenu={(e) => s.id.startsWith("set:") && app.showMenu(e, s.label, [
+                { label: "Change this set", run: () => editSet(s.label) },
+                { label: "Delete this set", run: () => deleteSet(s.label), danger: true },
+              ])}>
+              {s.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+      <span class="count">{repos.length} {repos.length === 1 ? "project" : "projects"}{#if pending} · searching {pending}…{/if}</span>
     </div>
 
     {#if picking}
       <div class="pick">
         <div class="picktop">
-          <input bind:value={pickFilter} placeholder="Filter repos" spellcheck="false" aria-label="Filter repos" />
-          {#each app.spaces as sp}<button class="mini" onclick={() => pickSpace(sp.id)}>+ {sp.name}</button>{/each}
-          <button class="mini" onclick={() => { picked = []; keep("picked", picked); }}>None</button>
+          <input class="field pickfilter" bind:value={pickFilter} placeholder="Filter projects" spellcheck="false" aria-label="Filter projects" />
+          {#each app.spaces as sp}<button class="btn sm" onclick={() => pickSpace(sp.id)}>+ {sp.name}</button>{/each}
+          <button class="btn sm" onclick={() => { picked = []; keep("picked", picked); }}>None</button>
         </div>
         <div class="picklist">
           {#each pickList as r (r.path)}
-            <label class="pickrow" class:child={!!r.parent}>
+            <label class="check pickrow" class:child={!!r.parent}>
               <input type="checkbox" checked={picked.includes(r.path)} onchange={() => togglePick(r.path)} />
-              <span>{r.name}</span>{#if app.nameHint[r.path]}<span class="faint">{app.nameHint[r.path]}</span>{/if}
+              <span class="pname">{r.name}</span>{#if app.nameHint[r.path]}<span class="faint">{app.nameHint[r.path]}</span>{/if}
             </label>
           {/each}
         </div>
         <form class="saveset" onsubmit={(e) => { e.preventDefault(); saveSet(); }}>
-          <input bind:value={setName} placeholder="Name this set, for example Frontend + APIs" spellcheck="false" aria-label="Set name" />
-          <button class="mini" type="submit" disabled={!setName.trim() || !picked.length}>Save set</button>
-          <button class="mini" type="button" onclick={() => (picking = false)}>Done</button>
+          <input class="field grow" bind:value={setName} placeholder="Name this set, for example Frontend + APIs" spellcheck="false" aria-label="Set name" />
+          <button class="btn sm" type="submit" disabled={!setName.trim() || !picked.length}>Save set</button>
+          <button class="btn sm" type="button" onclick={() => (picking = false)}>Done</button>
         </form>
       </div>
     {/if}
 
-    <div class="kinds" role="tablist">
-      {#each kinds as k, i}
-        <button role="tab" class:on={kind === k.id} aria-selected={kind === k.id} onclick={() => { kind = k.id; keep("kind", kind); input?.focus(); }} title="Alt+{i + 1}">
-          {k.label}{#if k.id !== "all" && counts[k.id as Exclude<Kind, "all">]}<span class="n">{counts[k.id as Exclude<Kind, "all">]}</span>{/if}
-        </button>
-      {/each}
+    <div class="kinds">
+      <div class="tabs" role="tablist">
+        {#each kinds as k, i}
+          <button role="tab" class:on={kind === k.id} aria-selected={kind === k.id} onclick={() => { kind = k.id; keep("kind", kind); input?.focus(); }}
+            use:hover={() => ({ title: k.label, hint: `Alt ${i + 1}` })}>
+            {k.label}{#if k.id !== "all" && counts[k.id as Exclude<Kind, "all">]}<span class="badge">{counts[k.id as Exclude<Kind, "all">]}</span>{/if}
+          </button>
+        {/each}
+      </div>
     </div>
 
     <div class="results" bind:this={listEl} role="listbox">
       {#if query.trim().length < 2}
-        <p class="note">Type at least 2 letters. <kbd>Tab</kbd> changes where to search. <kbd>Alt 1</kbd>…<kbd>6</kbd> pick a kind.</p>
+        <p class="note">Type at least 2 letters. <kbd>Tab</kbd> changes where to search. <kbd>Alt 1</kbd> to <kbd>Alt 6</kbd> pick a kind.</p>
       {:else if !rows.length && !pending}
-        <p class="note">Nothing found in {repos.length} {repos.length === 1 ? "repo" : "repos"}.{#if scope === "repo"} Press <kbd>Tab</kbd> to search more repos.{/if}</p>
+        <div class="state">
+          <span class="state-title">Nothing found in {repos.length} {repos.length === 1 ? "project" : "projects"}.</span>
+          {#if scope === "repo"}<p>Press <kbd>Tab</kbd> to search more projects.</p>{/if}
+        </div>
       {/if}
       {#each rows as r, i (r.id)}
         {#if r.t === "label"}
@@ -462,7 +475,7 @@
           <div class="row {r.t}" class:on={i === active} role="option" aria-selected={i === active} tabindex="-1"
             onmousemove={() => (active = i)} onclick={() => go(r)} oncontextmenu={(e) => menu(e, r)} onkeydown={() => {}}>
             {#if r.t === "code" || r.t === "def"}
-              {#if r.t === "def"}<span class="kindtag def">def</span>{/if}
+              {#if r.t === "def"}<span class="kindtag def">def</span>{:else}<span class="kindtag">code</span>{/if}
               <span class="where mono">{baseName(r.hit.path)}<span class="faint">:{r.hit.line}</span></span>
               <span class="line mono">{#each parts(r.hit.text.trim()) as p}{#if p.m}<mark>{p.t}</mark>{:else}{p.t}{/if}{/each}</span>
               <span class="dir mono faint">{dirName(r.hit.path)}</span>
@@ -490,235 +503,163 @@
               <span class="line">{r.issue.title}</span>
               <span class="dir faint">{r.issue.state}, {agoIso(r.issue.updated)}</span>
             {:else if r.t === "more"}
-              <span class="more">{r.n} more — show all {kinds.find((k) => k.id === r.kind)?.label.toLowerCase()}</span>
+              <span class="more">{r.n} more · show all {kinds.find((k) => k.id === r.kind)?.label.toLowerCase()}</span>
             {/if}
           </div>
         {/if}
       {/each}
     </div>
-    <p class="foot faint"><kbd>Enter</kbd> open. Right-click a file or line to copy its path. Saved sets: right-click to change or delete.</p>
+    <div class="dialog-foot foot">
+      <span class="hint"><kbd>Enter</kbd> open · <kbd>Tab</kbd> where to search · Right-click a file or line to copy its path · Right-click a saved set to change or delete it</span>
+    </div>
   </div>
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.45);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: 7vh 16px 16px;
-    z-index: 10;
-  }
   .search {
-    width: min(900px, 100%);
     height: min(80vh, 760px);
-    display: flex;
-    flex-direction: column;
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    overflow: hidden;
   }
   .bar {
     display: flex;
-    gap: 6px;
-    padding: 10px 10px 6px;
+    align-items: center;
+    gap: var(--s2);
+    padding: var(--s4) var(--s4) var(--s3);
+    flex-shrink: 0;
   }
-  input {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 6px 9px;
-    outline: none;
-    font: inherit;
-  }
-  input:focus {
-    border-color: var(--amber);
-  }
-  .bar input {
+  /* Search's one input is its whole purpose, so it is a bar-height field, like the palette's. */
+  .query {
     flex: 1;
-    font-size: 15px;
-    padding: 8px 10px;
+    height: var(--h-bar);
+    padding: 0 var(--s4);
+    font-size: var(--fs-lg);
   }
   .opt {
-    width: 36px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--muted);
-    font-size: 12px;
-  }
-  .opt.on {
-    color: var(--on-accent);
-    background: var(--amber);
-    border-color: var(--amber);
+    min-width: var(--h-ctl);
   }
   .scopes {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
-    padding: 0 10px 8px;
-    font-size: 12px;
+    gap: var(--s3);
+    padding: 0 var(--s4) var(--s3);
+    font-size: var(--fs-sm);
+    flex-shrink: 0;
   }
   .label {
     color: var(--faint);
-    margin-right: 2px;
   }
-  .scope {
-    padding: 2px 10px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    color: var(--muted);
+  .scroller {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
-  .scope.on {
-    color: var(--text);
-    border-color: var(--amber);
-    background: var(--amber-soft);
-  }
-  .grow {
-    flex: 1;
+  .count {
+    margin-left: auto;
+    color: var(--faint);
+    white-space: nowrap;
   }
   .pick {
-    margin: 0 10px 8px;
+    margin: 0 var(--s4) var(--s3);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    padding: 8px;
+    padding: var(--s3);
     background: var(--bg);
+    flex-shrink: 0;
   }
   .picktop,
   .saveset {
     display: flex;
-    gap: 6px;
+    gap: var(--s2);
     align-items: center;
     flex-wrap: wrap;
   }
-  .picktop input {
+  .pickfilter {
     width: 200px;
   }
   .saveset {
-    margin-top: 8px;
-  }
-  .saveset input {
-    flex: 1;
+    margin-top: var(--s3);
   }
   .picklist {
     columns: 3 200px;
-    margin-top: 8px;
+    margin-top: var(--s3);
     max-height: 170px;
     overflow-y: auto;
   }
   .pickrow {
     display: flex;
-    gap: 6px;
-    align-items: center;
-    font-size: 12.5px;
-    padding: 2px 0;
+    padding: var(--s1) 0;
+    color: var(--text);
     break-inside: avoid;
   }
   .pickrow.child {
-    padding-left: 16px;
+    padding-left: var(--s5);
   }
   .pickrow input {
-    accent-color: var(--amber);
     margin: 0;
-  }
-  .mini {
-    font-size: 12px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .mini:hover:not(:disabled) {
-    color: var(--text);
-  }
-  .mini:disabled {
-    opacity: 0.45;
   }
   .kinds {
     display: flex;
-    gap: 2px;
-    padding: 0 10px;
+    height: 32px;
+    padding: 0 var(--s4);
     border-bottom: 1px solid var(--line);
-  }
-  .kinds button {
-    padding: 5px 8px 6px;
-    font-size: 12.5px;
-    color: var(--muted);
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    display: flex;
-    gap: 5px;
-    align-items: center;
-  }
-  .kinds button.on {
-    color: var(--text);
-    border-bottom-color: var(--amber);
-  }
-  .n {
-    font-family: var(--mono);
-    font-size: 10.5px;
-    color: var(--faint);
+    flex-shrink: 0;
   }
   .results {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    padding: 4px 6px 8px;
+    padding: var(--s1) var(--s2) var(--s3);
   }
   .sublabel {
-    padding: 6px 8px 2px 14px;
-    font-size: 11px;
+    padding: var(--s2) var(--s3) var(--s1) var(--s4);
+    font-size: var(--fs-xs);
     color: var(--faint);
   }
   .kindtag.def {
-    color: var(--amber);
-    width: 26px;
+    color: var(--muted);
+    font-weight: 600;
+    width: var(--s6);
   }
   .group {
-    padding: 10px 8px 3px;
-    font-size: 12px;
+    padding: var(--s3) var(--s3) var(--s1);
+    font-size: var(--fs-sm);
     font-weight: 600;
     color: var(--muted);
   }
   .row {
     display: flex;
     align-items: baseline;
-    gap: 10px;
-    padding: 4px 8px;
-    border-radius: 5px;
+    gap: var(--s3);
+    padding: var(--s1) var(--s3);
+    border-radius: var(--r-sm);
     white-space: nowrap;
     overflow: hidden;
     cursor: default;
   }
   .row.on {
     background: var(--raised);
-    box-shadow: inset 2px 0 0 var(--amber);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .where {
     color: var(--text);
     flex-shrink: 0;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .line {
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
     flex: 1;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     color: var(--muted);
   }
   .row.commit .line,
   .row.pr .line,
   .row.issue .line {
-    font-size: 13px;
+    font-size: var(--fs-md);
     color: var(--text);
   }
   .dir {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     overflow: hidden;
     text-overflow: ellipsis;
     flex-shrink: 1;
@@ -731,12 +672,12 @@
     max-width: none;
   }
   .sha {
-    color: var(--amber);
-    font-size: 11.5px;
+    color: var(--muted);
+    font-size: var(--fs-xs);
     flex-shrink: 0;
   }
   .kindtag {
-    font-size: 10.5px;
+    font-size: var(--fs-xs);
     color: var(--faint);
     width: 44px;
     flex-shrink: 0;
@@ -747,17 +688,14 @@
     border-radius: 2px;
   }
   .more {
-    color: var(--blue);
-    font-size: 12px;
+    color: var(--accent);
+    font-size: var(--fs-sm);
   }
   .note {
-    margin: 16px 10px;
+    margin: var(--s5) var(--s3);
     color: var(--muted);
   }
   .foot {
-    margin: 0;
-    padding: 7px 12px;
-    border-top: 1px solid var(--line);
-    font-size: 11px;
+    flex-shrink: 0;
   }
 </style>

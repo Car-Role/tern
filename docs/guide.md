@@ -1,6 +1,7 @@
 # Tern guide
 
-Everything Tern does, in detail. For the overview, see the [README](../README.md).
+Everything Tern does, in detail. For the overview, see the [README](../README.md). For a reference organized by
+screen, with every key and menu, see [Everything Tern does](features.md).
 
 ## Features
 
@@ -8,7 +9,7 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
   Linked worktrees (for example the ones agents make) show under their main repo.
 - Shows branch, changed files, and commits to pull or push for every repo. Status refreshes
   every few seconds while the window has focus, and at once when you come back to the window.
-- Changes, Files, Pull requests, and History tabs for the open project.
+- Changes, Files, Pull requests, Issues, History, CI, and Tasks tabs for the open project (`Ctrl 1`–`Ctrl 7`).
 - Diffs in unified or split layout, with unchanged lines folded away.
 - Pull requests from GitHub (`gh`) and Azure DevOps (`az repos`). The diff is made on your machine:
   Tern fetches both branches and compares the PR head with the merge base.
@@ -51,7 +52,7 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
 - Right-click a project (or `Shift F10`) for its menu: open, copy path, fetch, pull, push, terminal,
   VS Code, pin, move to a space, hide. The "N hidden" button under the list shows hidden projects,
   dimmed; right-click one to unhide it.
-- Tasks tab (`Ctrl 5`, or `Ctrl Shift B` from anywhere). Tern finds npm scripts (also in sub-folders
+- Tasks tab (`Ctrl Shift B` from anywhere). Tern finds npm scripts (also in sub-folders
   like `cdk/` and `web/`, with the right package manager), VS Code `tasks.json`, .NET build/test/run/watch,
   Gradle, Cargo, Make, and Docker Compose. You can run any command and save it for the project.
   Tasks that look like a deploy, publish, release, or database change ask first.
@@ -158,27 +159,5 @@ Everything Tern does, in detail. For the overview, see the [README](../README.md
 
 ## Shortcuts
 
-| Keys | Action |
-| --- | --- |
-| `Ctrl K` / `Ctrl P` / `Ctrl Shift P` | Find a project / a file / a command |
-| `Alt ↑` `Alt ↓` | Previous / next project |
-| `Ctrl Alt 1`–`9` / `Ctrl Alt 0` | Switch to a space / all spaces |
-| `Ctrl Shift S` | Space picker |
-| `S` | Stage or unstage the file under the cursor (or the selected files) |
-| `Ctrl Enter` | Go to the commit box; in the box, commit |
-| `Ctrl 0` | All projects |
-| `Ctrl 1`–`4` | Changes, Files, Pull requests, History |
-| `↑` `↓` or `J` `K` | Move through the list; changes and files open as you move |
-| `Space` | Select a file (Ctrl+click and Shift+click work too) |
-| `Ctrl Shift C` or `C` | Copy menu, then `R` `A` `L` `M` `D` |
-| `Ctrl Alt R/A/L/M/D` | Copy in one format directly |
-| `Ctrl D` | Split or unified diff |
-| `Ctrl Shift F` / `Ctrl F` | Search everywhere / search this file |
-| `Ctrl Alt F` | Fetch all projects |
-| `Ctrl Shift D` | Databases |
-| `Ctrl Shift V` | Page view (Markdown, tree, table, image, log) or source |
-| `` Ctrl ` `` / `` Ctrl Shift ` `` | Terminal here / Claude Code here |
-| `Ctrl Shift E` | Open in VS Code |
-| `F5` | Reload |
-| `F1` | All shortcuts |
-
+The full keyboard reference, every right-click menu, and every screen are in [Everything Tern does](features.md).
+Press `F1` in Tern for the shortcuts, or `Ctrl Shift P` for every action.

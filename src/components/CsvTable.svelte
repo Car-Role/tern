@@ -76,6 +76,28 @@
   const first = $derived(Math.max(0, Math.min(Math.floor(scrollTop / ROW), body.length - Math.ceil(viewH / ROW)) - 10));
   const visible = $derived(body.slice(first, first + Math.ceil(viewH / ROW) + 20));
 
+  function headMenu(e: MouseEvent, i: number) {
+    e.preventDefault();
+    const name = head[i] ?? "";
+    const label = name || `Column ${i + 1}`;
+    app.showMenu(e, label, [
+      { label: "Copy column name", run: () => app.copyValue(name, `the column name ${label}`) },
+      {
+        label: query ? "Copy every shown value in this column" : "Copy every value in this column",
+        run: () => app.copyValue(body.map((r) => r.cells[i] ?? "").join("\n"), `${body.length.toLocaleString()} values from ${label}`),
+      },
+    ]);
+  }
+
+  function onFilterKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && filter) {
+      e.preventDefault();
+      e.stopPropagation();
+      filter = "";
+      query = "";
+    }
+  }
+
   function cellMenu(e: MouseEvent, r: { n: number; cells: string[] }, i: number) {
     e.preventDefault();
     app.showMenu(e, `Row ${r.n}`, [
@@ -87,33 +109,44 @@
 </script>
 
 <div class="csv">
-  <div class="bar">
+  <div class="toolbar sub csvbar">
     {#if data}
-      <span class="faint">
-        {body.length.toLocaleString()}{filter ? ` of ${(data.rows.length - (header ? 1 : 0)).toLocaleString()}` : ""} rows · {data.columns} columns ·
+      <span class="meta">
+        {body.length.toLocaleString()}{query ? ` of ${(data.rows.length - (header ? 1 : 0)).toLocaleString()}` : ""} rows · {data.columns} columns ·
         {data.delimiter === "\t" ? "tabs" : data.delimiter === ";" ? "semicolons" : data.delimiter === "|" ? "pipes" : "commas"}
       </span>
-      <label class="hdr"><input type="checkbox" bind:checked={header} /> First row is the header</label>
+      <label class="check hdrcheck"><input type="checkbox" bind:checked={header} /><span class="hdr-long">First row is the header</span><span class="hdr-short">Header row</span></label>
       <span class="grow"></span>
-      <input class="filter" bind:value={filter} placeholder="Filter rows" spellcheck="false" aria-label="Filter rows" />
+      <input class="field filter" bind:value={filter} onkeydown={onFilterKey} placeholder="Filter rows" spellcheck="false" aria-label="Filter rows" />
     {/if}
   </div>
   {#if data?.problems.length}
     <p class="warn">{data.problems.join(" ")}</p>
   {/if}
   {#if loadNote}
-    <p class="note">{loadNote}</p>
+    <div class="state">
+      <span class="state-title">Cannot show this table</span>
+      <p>{loadNote}</p>
+    </div>
   {:else if !data}
-    <p class="note">Reading the table…</p>
+    <div class="state delay"><p>Reading the table…</p></div>
   {:else if !data.rows.length}
-    <p class="note">This file has no rows.</p>
+    <div class="state"><p>This file has no rows.</p></div>
+  {:else if query && !body.length}
+    <div class="state">
+      <span class="state-title">No rows match “{filter.trim()}”</span>
+      <div class="actions"><button class="btn" onclick={() => ((filter = ""), (query = ""))}>Clear the filter</button></div>
+    </div>
   {:else}
     <div class="scroll" bind:this={scroller} bind:clientHeight={viewH} onscroll={() => (scrollTop = scroller!.scrollTop)}>
       <div class="inner" style:width="{total}px">
         {#if head.length}
           <div class="thead" style:width="{total}px">
             <span class="num" style:width="{numW}px">#</span>
-            {#each widths as w, i}<span class="th" style:width="{w}px" title={head[i]}>{head[i] ?? ""}</span>{/each}
+            {#each widths as w, i}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span class="th" style:width="{w}px" title={head[i]} oncontextmenu={(e) => headMenu(e, i)}>{head[i] ?? ""}</span>
+            {/each}
           </div>
         {/if}
         <div class="space" style:height="{body.length * ROW}px">
@@ -133,53 +166,47 @@
 </div>
 
 <style>
+  /* The bar never wraps: the meta text shrinks first, then the checkbox label gets shorter. */
+  .csvbar {
+    container: csvbar / inline-size;
+  }
+  .csvbar .meta {
+    flex: 0 1 auto;
+  }
+  .hdrcheck {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .hdr-short {
+    display: none;
+  }
+  @container csvbar (max-width: 560px) {
+    .hdr-long {
+      display: none;
+    }
+    .hdr-short {
+      display: inline;
+    }
+  }
   .csv {
     position: absolute;
     inset: 0;
     display: flex;
     flex-direction: column;
   }
-  .bar {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 5px 14px;
-    border-bottom: 1px solid var(--line);
-    font-size: 12px;
-    min-height: 34px;
-  }
-  .grow {
-    flex: 1;
-  }
-  .hdr {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--muted);
-  }
-  .hdr input {
-    accent-color: var(--amber);
-  }
   .filter {
     width: 200px;
-    font: inherit;
-    font-size: 12px;
-    color: var(--text);
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 3px 8px;
-    outline: none;
   }
-  .filter:focus {
-    border-color: var(--amber);
+  .state.delay {
+    animation: tern-fade-in 150ms var(--ease-out) 300ms both;
   }
   .warn {
     margin: 0;
-    padding: 6px 14px;
-    font-size: 12px;
-    color: var(--amber);
+    padding: var(--s2) var(--s4);
+    font-size: var(--fs-sm);
+    color: var(--text);
     background: var(--amber-soft);
+    border-bottom: 1px solid var(--line);
   }
   .scroll {
     flex: 1;
@@ -221,14 +248,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     border-right: 1px solid var(--line);
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
   }
   .th {
     font-weight: 600;
   }
   .num {
     color: var(--faint);
-    font: 11.5px/26px var(--mono);
+    font: var(--fs-xs) / 26px var(--mono);
     text-align: right;
     background: var(--panel);
     position: sticky;
@@ -238,13 +265,9 @@
     border-bottom: 1px solid var(--line);
     user-select: text;
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .td.missing {
     background: color-mix(in srgb, var(--panel) 60%, transparent);
-  }
-  .note {
-    margin: 20px;
-    color: var(--muted);
   }
 </style>

@@ -35,23 +35,33 @@
 
 <div class="pdf">
   {#if error}
-    <p class="note err mono">{error}</p>
-  {:else if !info}
-    <p class="note">Opening the PDF…</p>
-  {:else if info.tooLarge}
-    <p class="note">This PDF is {fmtBytes(info.size)}. PDFs over 40 MB do not open here.</p>
-  {:else if info.missing}
-    <p class="note">This PDF does not exist in this version.</p>
-  {:else if info.notPdf}
-    <p class="note">This file is named .pdf, but it is not a PDF. It may be damaged.</p>
-  {:else if url}
-    <iframe src={url} title={rel}></iframe>
-    <div class="info mono">
-      <span>{fmtBytes(info.size)}</span>
-      <span class="faint">If the page stays blank, this system cannot show PDFs inside Tern.</span>
-      <span class="grow"></span>
-      <button class="mode" onclick={() => app.open("explorer")}>Show in folder</button>
+    <div class="state">
+      <span class="state-title">Could not open this PDF</span>
+      <pre>{error}</pre>
     </div>
+  {:else if !info}
+    <div class="state delay"><p>Opening the PDF…</p></div>
+  {:else if info.tooLarge}
+    <div class="state">
+      <span class="state-title">Too large to open here</span>
+      <p>This PDF is {fmtBytes(info.size)}. PDFs over 40 MB do not open in Tern.</p>
+      <div class="actions"><button class="btn" onclick={() => app.open("explorer")}>Show in folder</button></div>
+    </div>
+  {:else if info.missing}
+    <div class="state"><p>This PDF does not exist in this version.</p></div>
+  {:else if info.notPdf}
+    <div class="state">
+      <span class="state-title">Not a PDF</span>
+      <p>This file is named .pdf, but it is not a PDF. It may be damaged.</p>
+    </div>
+  {:else if url}
+    <div class="toolbar sub">
+      <span class="meta">{fmtBytes(info.size)}</span>
+      <span class="meta">If the page stays blank, this system cannot show PDFs inside Tern.</span>
+      <span class="grow"></span>
+      <button class="btn sm ghost" onclick={() => app.open("explorer")}>Show in folder</button>
+    </div>
+    <iframe src={url} title={rel}></iframe>
   {/if}
 </div>
 
@@ -68,34 +78,8 @@
     width: 100%;
     background: var(--panel);
   }
-  .info {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 6px 14px;
-    border-top: 1px solid var(--line);
-    font-size: 11.5px;
-    color: var(--muted);
-  }
-  .grow {
-    flex: 1;
-  }
-  .mode {
-    font-size: 11.5px;
-    color: var(--muted);
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    padding: 1px 8px;
-  }
-  .mode:hover {
-    color: var(--text);
-  }
-  .note {
-    margin: 24px;
-    color: var(--muted);
-  }
-  .note.err {
-    color: var(--del);
-    font-size: 12px;
+  /* Opening that ends within 300 ms shows nothing. */
+  .state.delay {
+    animation: tern-fade-in 150ms var(--ease-out) 300ms both;
   }
 </style>

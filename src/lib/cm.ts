@@ -55,7 +55,7 @@ export const theme = EditorView.theme({
   ".cm-searchMatch": { backgroundColor: "var(--amber-soft)", outline: "1px solid var(--amber)" },
   ".cm-searchMatch-selected": { backgroundColor: "var(--amber-sel)" },
   ".cm-panels": { backgroundColor: "var(--panel)", color: "var(--text)", borderColor: "var(--line)" },
-  ".cm-panels input, .cm-panels button": { fontFamily: "var(--ui)", fontSize: "12px" },
+  ".cm-panels input, .cm-panels button": { fontFamily: "var(--ui)", fontSize: "var(--fs-sm)" },
   ".cm-foldGutter .cm-gutterElement": { color: "var(--faint)", padding: "0 4px" },
   ".cm-foldPlaceholder": { backgroundColor: "var(--raised)", border: "none", color: "var(--muted)" },
   // Diff colors (@codemirror/merge). Changed words get a light tint plus an underline, so the text on
@@ -86,7 +86,7 @@ export const theme = EditorView.theme({
     backgroundColor: "var(--panel)",
     color: "var(--muted)",
     fontFamily: "var(--ui)",
-    fontSize: "12px",
+    fontSize: "var(--fs-sm)",
     padding: "4px 12px",
     background: "var(--panel)",
     cursor: "pointer",

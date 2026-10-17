@@ -3,12 +3,16 @@
   import { app } from "../lib/store.svelte";
   import { hover } from "../lib/hover";
   import { inTauri } from "../lib/api";
+  import { baseName } from "../lib/format";
+  import Icon from "./Icon.svelte";
+  import Notices from "./Notices.svelte";
 
   // macOS keeps its own traffic-light buttons on the left; Windows and Linux get Tern's buttons.
   const mac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
   let maximized = $state(false);
   let focused = $state(true);
   const fetching = $derived(Object.values(app.busy).some((a) => a === "fetch"));
+  const running = $derived(app.runs.filter((r) => r.running).length);
 
   type Win = Awaited<ReturnType<typeof getWin>>;
   let win: Win | null = null;
@@ -42,73 +46,68 @@
     app.paletteMode = "projects";
     app.overlay = "palette";
   };
+
+  /** Where you are, for the breadcrumb. */
+  const place = $derived(app.ticketsOpen ? "Tickets" : app.dataOpen ? "Data" : app.current ? null : "Home");
+  const repoName = $derived(app.current ? baseName(app.current) : "");
 </script>
 
 <header class="titlebar" class:mac class:blurred={!focused} data-tauri-drag-region>
   <div class="left" data-tauri-drag-region>
-    <button class="brand" onclick={() => app.select(null)} use:hover={() => ({ title: "All projects", hint: "Ctrl+0" })} aria-label="Tern: all projects">
-      <!-- The app icon in small: a tile with the tern mark. -->
-      <span class="mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="14" height="14">
-          <path d="M3.5 9.5c3 0 5.5 1.5 8.5 5 3-3.5 5.5-5 8.5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </span>
-      <span>Tern</span>
+    <button class="mark" onclick={() => app.select(null)} use:hover={() => ({ title: "Tern", text: "Home", hint: "Ctrl 0" })} aria-label="Tern: home">
+      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+        <path d="M3.5 9.5c3 0 5.5 1.5 8.5 5 3-3.5 5.5-5 8.5-5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
     </button>
-
-    {#if app.spaces.length}
-      <div class="spaces" role="tablist" aria-label="Spaces">
-        <button role="tab" class="space" class:on={!app.activeSpace} aria-selected={!app.activeSpace} onclick={() => app.switchSpace(null)}
-          use:hover={() => ({ title: "All spaces", hint: "Ctrl+Alt+0" })}>All</button>
-        {#each app.spaces as sp, i (sp.id)}
-          <button role="tab" class="space" class:on={app.activeSpace?.id === sp.id} aria-selected={app.activeSpace?.id === sp.id}
-            style:--c={sp.color} onclick={() => app.switchSpace(sp.id)} use:hover={() => ({ title: sp.name, hint: `Ctrl+Alt+${i + 1}` })}>
-            <span class="sw"></span>{sp.name}
-          </button>
-        {/each}
-      </div>
-      <!-- Narrow windows: one button that opens the space picker. -->
-      <button class="space-pick" onclick={() => (app.overlay = "spaces")} aria-label="Switch space" use:hover={() => ({ title: "Switch space", hint: "Ctrl+Shift+S" })}>
-        <span class="sw" style:--c={app.activeSpace?.color ?? "var(--faint)"}></span>{app.activeSpace?.name ?? "All"}
-        <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+    {#if app.sidebarCollapsed}
+      <button class="icon-btn" onclick={() => app.toggleSidebar(true)} aria-label="Show the sidebar" use:hover={() => ({ title: "Show the sidebar", hint: "Ctrl \\" })}>
+        <Icon name="sidebar" />
       </button>
     {/if}
+    <div class="history">
+      <button class="icon-btn" disabled={!app.canBack} onclick={() => app.back()} aria-label="Back" use:hover={() => ({ title: "Back", hint: "Alt ←" })}><Icon name="back" /></button>
+      <button class="icon-btn" disabled={!app.canForward} onclick={() => app.forward()} aria-label="Forward" use:hover={() => ({ title: "Forward", hint: "Alt →" })}><Icon name="forward" /></button>
+    </div>
+    <nav class="crumbs" aria-label="Where you are" data-tauri-drag-region>
+      {#if app.activeSpace}
+        <button class="crumb faint" onclick={() => (app.overlay = "spaces")}>
+          <span class="sw" style:--c={app.activeSpace.color}></span>{app.activeSpace.name}
+        </button>
+        <span class="slash" aria-hidden="true">/</span>
+      {/if}
+      {#if place}
+        <span class="crumb now">{place}</span>
+      {:else}
+        <button class="crumb now" onclick={() => app.review && app.closeReview()} title={app.current ?? ""}>{repoName}</button>
+
+      {/if}
+    </nav>
   </div>
 
   <div class="center" data-tauri-drag-region>
     <button class="goto" onclick={openGoTo} aria-label="Go to a project, file, or command">
-      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+      <Icon name="search" size={13} />
       <span class="goto-text">Go to a project, file, or command</span>
       <kbd>Ctrl K</kbd>
-    </button>
-    <button class="search tix" class:on={app.ticketsOpen} onclick={() => (app.ticketsOpen ? app.closeTickets() : app.openTickets())}
-      use:hover={() => ({ title: "My tickets", text: "Azure DevOps work items and GitHub issues assigned to you.", hint: "Ctrl+Shift+T" })}>
-      Tickets{#if app.tickets.items.length}<span class="badge">{app.tickets.items.length}</span>{/if}
-    </button>
-    <button class="search tix" class:on={app.dataOpen} onclick={() => (app.dataOpen ? app.closeData() : app.openData())}
-      use:hover={() => ({ title: "Databases", text: "Look at SQLite, Postgres, SQL Server, and Redis. Read-only unless you allow writes.", hint: "Ctrl+Shift+D" })}>
-      Data
-    </button>
-    <button class="search" onclick={() => (app.overlay = "search")}
-      use:hover={() => ({ title: "Search", text: "Code, file names, commits, branches, PRs, and issues, in this repo, this space, or any repos you pick.", hint: "Ctrl+Shift+F" })}>
-      Search
     </button>
   </div>
 
   <div class="right" data-tauri-drag-region>
     <div class="tools">
-      <button class="icon" onclick={() => (app.overlay = "clone")} use:hover={() => ({ title: "Clone a repo", text: "From Azure DevOps or GitHub.", hint: "Ctrl+Shift+O" })} aria-label="Clone a repo">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+      {#if app.runs.length}
+        <button class="btn sm ghost tasks" class:live={running > 0} onclick={() => app.setPanel(!app.panelOpen)}
+          use:hover={() => ({ title: "Tasks and terminals", text: running ? `${running} running` : "Nothing running", hint: "Ctrl J" })}>
+          <Icon name="play" size={10} stroke={2} />{running ? `${running} running` : "Tasks"}
+        </button>
+      {/if}
+      <button class="icon-btn" class:spin={fetching} onclick={() => app.fetchAll()} aria-label="Fetch all"
+        use:hover={() => ({ title: fetching ? "Fetching…" : "Fetch all", text: "Fetch every project in view, so pull and push counts are fresh.", hint: "Ctrl Alt F" })}>
+        <Icon name="refresh" />
       </button>
-      <button class="icon" class:spin={fetching} onclick={() => app.fetchAll()} use:hover={() => ({ title: fetching ? "Fetching…" : "Fetch all projects", hint: "Ctrl+Alt+F" })} aria-label="Fetch all projects">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
-      </button>
-      <button class="icon" onclick={() => (app.overlay = "settings")} use:hover={() => ({ title: "Settings", hint: "Ctrl+," })} aria-label="Settings">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-          <path d="M2.5 4.5h7M12.5 4.5h1M2.5 11.5h1M6.5 11.5h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <circle cx="11" cy="4.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.4" />
-          <circle cx="5" cy="11.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.4" />
-        </svg>
+      <button class="icon-btn bell" class:on={app.noticesOpen} onclick={() => app.toggleNotices()} aria-label="Notifications"
+        use:hover={() => ({ title: "Notifications", text: app.unreadNotices ? `${app.unreadNotices} new` : "Everything Tern told you this session." })}>
+        <Icon name="bell" />
+        {#if app.unreadNotices}<span class="dot"></span>{/if}
       </button>
     </div>
 
@@ -131,21 +130,20 @@
     {/if}
   </div>
 </header>
+{#if app.noticesOpen}<Notices />{/if}
 
 <style>
   .titlebar {
     grid-column: 1 / -1;
-    height: 40px;
+    height: var(--h-title);
     display: flex;
     align-items: center;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
     container-type: inline-size;
     user-select: none;
-    transition: color 150ms ease-out;
   }
   .titlebar.mac {
-    /* Room for the macOS window buttons. */
     padding-left: 76px;
   }
   .left,
@@ -156,132 +154,96 @@
     height: 100%;
   }
   .left {
-    flex: none;
-    gap: 14px;
-    padding-left: 12px;
+    flex: 1 1 0;
+    gap: var(--s2);
+    padding-left: var(--s3);
   }
   .right {
-    flex: none;
+    flex: 1 1 0;
     justify-content: flex-end;
-    gap: 6px;
+    gap: var(--s2);
   }
-  /* The middle takes the free space, so it shrinks instead of running under its neighbors. */
   .center {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 0 1 440px;
+    min-width: 120px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 0 16px;
     height: 100%;
   }
-
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    height: 28px;
-    padding: 0 6px;
-    margin-left: -6px;
-    border-radius: var(--radius);
-    font-weight: 650;
-    font-size: 13px;
-    color: var(--text);
-  }
   .mark {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border-radius: 6px;
     display: grid;
     place-items: center;
     background: var(--text);
     color: var(--panel);
-    transition: background-color 150ms ease-out;
+    flex-shrink: 0;
+    transition: transform 160ms var(--ease-out), background-color 150ms;
   }
-  .brand:hover {
+  .mark:active {
+    transform: scale(0.94);
+  }
+  .history {
+    display: flex;
+    gap: 0;
+  }
+  .crumbs {
+    display: flex;
+    align-items: center;
+    gap: var(--s1);
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--fs-md);
+  }
+  .crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s2);
+    height: var(--h-ctl);
+    padding: 0 var(--s2);
+    border-radius: var(--radius);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  button.crumb:hover {
     background: var(--hover);
   }
-
-  .spaces {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 8px;
-    background: var(--bg);
-    border: 1px solid var(--line);
-  }
-  .space {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 22px;
-    padding: 0 9px;
-    border-radius: 6px;
-    font-size: 12px;
-    color: var(--muted);
-    transition: background-color 150ms ease-out, color 150ms ease-out;
-  }
-  .space:hover {
+  .crumb.now {
     color: var(--text);
+    font-weight: 600;
   }
-  .space.on {
-    color: var(--text);
-    background: var(--raised);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+  .slash {
+    color: var(--faint);
   }
   .sw {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 2px;
     background: var(--c);
     flex-shrink: 0;
   }
-  .space-pick {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    height: 26px;
-    padding: 0 9px;
-    border-radius: var(--radius);
-    border: 1px solid var(--line);
-    font-size: 12px;
-    color: var(--text);
-  }
-  .space-pick svg {
-    color: var(--muted);
-  }
-  .space-pick:hover {
-    background: var(--hover);
-  }
-
   .goto {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex: 0 1 460px;
+    gap: var(--s3);
+    width: 100%;
     min-width: 0;
     height: 28px;
-    padding: 0 6px 0 10px;
+    padding: 0 var(--s2) 0 var(--s3);
     border-radius: 7px;
     background: var(--bg);
     border: 1px solid var(--line);
     color: var(--muted);
-    font-size: 12.5px;
-    transition: border-color 150ms ease-out, color 150ms ease-out, transform 160ms var(--ease-out);
+    font-size: var(--fs-sm);
+    transition: border-color 120ms, color 120ms;
   }
   .goto:hover {
     border-color: var(--line-strong);
     color: var(--text);
-  }
-  .goto:focus-visible,
-  .search:focus-visible,
-  .brand:focus-visible,
-  .space:focus-visible,
-  .icon:focus-visible {
-    outline: 2px solid var(--amber);
-    outline-offset: 1px;
   }
   .goto-text {
     flex: 1;
@@ -293,65 +255,36 @@
   .goto kbd {
     flex-shrink: 0;
   }
-  .search {
-    flex: none;
-    height: 28px;
-    padding: 0 10px;
-    border-radius: 7px;
-    font-size: 12.5px;
-    color: var(--muted);
-  }
-  .search:hover {
-    background: var(--hover);
-    color: var(--text);
-  }
-  .tix {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .tix.on {
-    background: var(--raised);
-    color: var(--text);
-  }
-  .badge {
-    font-size: 10.5px;
-    line-height: 16px;
-    min-width: 16px;
-    padding: 0 5px;
-    border-radius: 8px;
-    background: var(--amber-soft);
-    color: var(--amber);
-    text-align: center;
-  }
-
   .tools {
     display: flex;
     align-items: center;
     gap: 2px;
-    padding-right: 4px;
+    padding-right: var(--s2);
   }
-  /* A thin line between Tern's buttons and the window buttons. */
   .tools:has(+ .controls)::after {
     content: "";
     width: 1px;
     height: 16px;
-    margin-left: 8px;
+    margin-left: var(--s3);
     background: var(--line-strong);
   }
-  .icon {
-    width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    border-radius: var(--radius);
-    color: var(--muted);
+  .tasks.live {
+    color: var(--add);
   }
-  .icon:hover {
-    background: var(--hover);
-    color: var(--text);
+  .bell {
+    position: relative;
   }
-  .spin svg {
+  .bell .dot {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--del);
+    box-shadow: 0 0 0 2px var(--panel);
+  }
+  .spin :global(svg) {
     animation: spin 0.9s linear infinite;
   }
   @keyframes spin {
@@ -359,7 +292,6 @@
       transform: rotate(360deg);
     }
   }
-
   .controls {
     display: flex;
     height: 100%;
@@ -367,11 +299,10 @@
   }
   .ctl {
     width: 46px;
-    height: 39px;
+    height: calc(var(--h-title) - 1px);
     display: grid;
     place-items: center;
     color: var(--text);
-    border-radius: 0;
     transition: background-color 120ms ease-out, color 120ms ease-out;
   }
   .ctl svg {
@@ -391,49 +322,31 @@
     background: #b22a1b;
     color: #fff;
   }
-
-  /* An inactive window looks quieter, like native title bars. */
-  .blurred .brand,
   .blurred .ctl,
-  .blurred .space.on {
+  .blurred .crumb.now {
     color: var(--muted);
   }
   .blurred .mark {
     background: var(--muted);
   }
-
-  @container (max-width: 1000px) {
+  @container (max-width: 900px) {
     .goto-text {
       font-size: 0;
     }
     .goto-text::before {
       content: "Go to…";
-      font-size: 12.5px;
+      font-size: var(--fs-sm);
     }
   }
-  @container (max-width: 1160px) {
-    .spaces {
-      display: none;
-    }
-    .space-pick {
-      display: flex;
-    }
-  }
-  @container (max-width: 760px) {
-    .search,
-    .brand span {
+  @container (max-width: 720px) {
+    .crumbs .faint,
+    .crumbs .slash {
       display: none;
     }
   }
-
   @media (prefers-reduced-motion: reduce) {
-    .spin svg {
+    .spin :global(svg) {
       animation-duration: 2.4s;
-    }
-    .space,
-    .goto,
-    .ctl {
-      transition: none;
     }
   }
 </style>

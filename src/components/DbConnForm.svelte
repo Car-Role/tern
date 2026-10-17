@@ -67,7 +67,7 @@
 
   async function remove() {
     if (!conn) return;
-    const ok = await app.ask({ title: `Delete ${conn.name}?`, body: "This removes the saved connection and its password from the keychain. The database itself is not touched.", confirm: "Delete" });
+    const ok = await app.ask({ title: `Delete ${conn.name}?`, body: "This removes the saved connection and its password from the keychain. The database itself is not touched.", confirm: "Delete", danger: true });
     if (!ok) return;
     await app.removeDbConn(conn.id);
     onclose();
@@ -78,7 +78,8 @@
       e.preventDefault();
       e.stopPropagation();
       onclose();
-    } else if (e.key === "Enter" && (e.ctrlKey || (e.target as HTMLElement).tagName === "INPUT")) {
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      // Only Ctrl Enter saves. A plain Enter in a field is too easy to press by accident.
       e.preventDefault();
       save();
     }
@@ -87,74 +88,78 @@
   const tlsLabels: Record<DbTls, string> = { off: "Off", prefer: "If offered", require: "Required", requireNoVerify: "Required, any certificate" };
 </script>
 
-<div class="backdrop fx-fade" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
+<div class="backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dbf-title" tabindex="-1" onkeydown={onKey}>
-    <h2 id="dbf-title">{conn ? `Edit ${conn.name}` : "New connection"}</h2>
-
-    <div class="seg engines" role="group" aria-label="Database type">
-      {#each ["postgres", "mssql", "sqlite", "redis"] as e}
-        <button class:on={f.engine === e} onclick={() => pickEngine(e as DbEngine)}>{engineLabel[e as DbEngine]}</button>
-      {/each}
+    <div class="dialog-head">
+      <h2 id="dbf-title">{conn ? `Edit ${conn.name}` : "New connection"}</h2>
     </div>
 
-    <div class="form">
-      <label for="dbf-name">Name</label>
-      <div class="row">
-        <input id="dbf-name" bind:this={first} bind:value={f.name} placeholder={f.engine === "sqlite" ? "app.db" : "Production read replica"} spellcheck="false" />
-        <div class="colors" role="radiogroup" aria-label="Color">
-          {#each COLORS as c}
-            <button class="dot" class:on={f.color === c} style:--c={c || "transparent"} class:none={!c} onclick={() => (f.color = c)} aria-label={c ? `Color ${c}` : "No color"} role="radio" aria-checked={f.color === c}></button>
-          {/each}
-        </div>
+    <div class="dialog-body">
+      <div class="seg engines" role="group" aria-label="Database type">
+        {#each ["postgres", "mssql", "sqlite", "redis"] as e}
+          <button class:on={f.engine === e} aria-pressed={f.engine === e} onclick={() => pickEngine(e as DbEngine)}>{engineLabel[e as DbEngine]}</button>
+        {/each}
       </div>
 
-      {#if f.engine === "sqlite"}
-        <label for="dbf-file">File</label>
+      <div class="form">
+        <label for="dbf-name">Name</label>
         <div class="row">
-          <input id="dbf-file" class="mono" bind:value={f.file} placeholder="C:\path\to\app.db" spellcheck="false" />
-          {#if inTauri}<button class="btn" onclick={browse}>Browse…</button>{/if}
+          <input id="dbf-name" class="field" bind:this={first} bind:value={f.name} placeholder={f.engine === "sqlite" ? "app.db" : "Production read replica"} spellcheck="false" />
+          <div class="colors" role="radiogroup" aria-label="Color">
+            {#each COLORS as c}
+              <button class="swatch" class:on={f.color === c} style:--c={c || "transparent"} class:none={!c} onclick={() => (f.color = c)} aria-label={c ? `Color ${c}` : "No color"} role="radio" aria-checked={f.color === c}></button>
+            {/each}
+          </div>
         </div>
-      {:else}
-        <label for="dbf-host">Host</label>
-        <div class="row">
-          <input id="dbf-host" class="mono" bind:value={f.host} placeholder={f.engine === "mssql" ? "localhost or server\\SQLEXPRESS" : "localhost"} spellcheck="false" />
-          <input class="mono port" type="number" min="0" max="65535" bind:value={f.port} aria-label="Port" />
-        </div>
-        <label for="dbf-db">{f.engine === "redis" ? "Database number" : "Database"}</label>
-        <input id="dbf-db" class="mono" bind:value={f.database} placeholder={f.engine === "redis" ? "0" : f.engine === "mssql" ? "master" : "postgres"} spellcheck="false" />
-        <label for="dbf-user">User</label>
-        <input id="dbf-user" class="mono" bind:value={f.user} spellcheck="false" autocomplete="off"
-          placeholder={f.engine === "mssql" ? "Empty: sign in with your Windows account" : f.engine === "redis" ? "Empty for the default user" : "postgres"} />
-        <label for="dbf-pw">Password</label>
-        <div class="row">
-          <input id="dbf-pw" type="password" bind:value={password} autocomplete="new-password"
-            placeholder={f.hasPassword && !clearPassword ? "Saved in the system keychain. Type to replace it." : ""} />
-          {#if f.hasPassword && !password}
-            <label class="check"><input type="checkbox" bind:checked={clearPassword} /> Remove</label>
-          {/if}
-        </div>
-        <label for="dbf-tls">Encryption</label>
-        <select id="dbf-tls" bind:value={f.tls}>
-          {#each Object.entries(tlsLabels) as [v, l]}
-            {#if !(f.engine === "redis" && v === "prefer")}<option value={v}>{l}</option>{/if}
-          {/each}
-        </select>
-      {/if}
 
-      <span></span>
-      <label class="check writes">
-        <input type="checkbox" bind:checked={f.allowWrites} />
-        <span>Allow writes <span class="faint">— off keeps this connection read-only. Even when on, Tern asks before a query that changes data.</span></span>
-      </label>
+        {#if f.engine === "sqlite"}
+          <label for="dbf-file">File</label>
+          <div class="row">
+            <input id="dbf-file" class="field mono" bind:value={f.file} placeholder="C:\path\to\app.db" spellcheck="false" />
+            {#if inTauri}<button class="btn" onclick={browse}>Browse…</button>{/if}
+          </div>
+        {:else}
+          <label for="dbf-host">Host</label>
+          <div class="row">
+            <input id="dbf-host" class="field mono" bind:value={f.host} placeholder={f.engine === "mssql" ? "localhost or server\\SQLEXPRESS" : "localhost"} spellcheck="false" />
+            <input class="field mono port" type="number" min="0" max="65535" bind:value={f.port} aria-label="Port" />
+          </div>
+          <label for="dbf-db">{f.engine === "redis" ? "Database number" : "Database"}</label>
+          <input id="dbf-db" class="field mono" bind:value={f.database} placeholder={f.engine === "redis" ? "0" : f.engine === "mssql" ? "master" : "postgres"} spellcheck="false" />
+          <label for="dbf-user">User</label>
+          <input id="dbf-user" class="field mono" bind:value={f.user} spellcheck="false" autocomplete="off"
+            placeholder={f.engine === "mssql" ? "Empty: sign in with your Windows account" : f.engine === "redis" ? "Empty for the default user" : "postgres"} />
+          <label for="dbf-pw">Password</label>
+          <div class="row">
+            <input id="dbf-pw" class="field" type="password" bind:value={password} autocomplete="new-password"
+              placeholder={f.hasPassword && !clearPassword ? "Saved in the system keychain. Type to replace it." : ""} />
+            {#if f.hasPassword && !password}
+              <label class="check"><input type="checkbox" bind:checked={clearPassword} /> Remove</label>
+            {/if}
+          </div>
+          <label for="dbf-tls">Encryption</label>
+          <select id="dbf-tls" class="field" bind:value={f.tls}>
+            {#each Object.entries(tlsLabels) as [v, l]}
+              {#if !(f.engine === "redis" && v === "prefer")}<option value={v}>{l}</option>{/if}
+            {/each}
+          </select>
+        {/if}
+
+        <span></span>
+        <label class="check writes">
+          <input type="checkbox" bind:checked={f.allowWrites} />
+          <span>Allow writes <span class="faint">— off keeps this connection read-only. Even when on, Tern asks before a query that changes data.</span></span>
+        </label>
+      </div>
+
+      {#if result}
+        <p class="result mono" class:ok={result.ok}>{result.ok ? "Connected: " : ""}{result.text}</p>
+      {/if}
     </div>
 
-    {#if result}
-      <p class="result mono" class:ok={result.ok}>{result.ok ? "Connected: " : ""}{result.text}</p>
-    {/if}
-
-    <div class="actions">
-      {#if conn}<button class="btn danger" onclick={remove}>Delete</button>{/if}
-      <span class="grow"></span>
+    <div class="dialog-foot">
+      {#if conn}<button class="btn danger" onclick={remove}>Delete…</button>{/if}
+      <span class="hint"><kbd>Ctrl Enter</kbd> saves</span>
       <button class="btn" onclick={test} disabled={testing}>{testing ? "Testing…" : "Test"}</button>
       <button class="btn" onclick={onclose}>Cancel</button>
       <button class="btn primary" onclick={save} disabled={saving || (f.engine === "sqlite" && !f.file.trim())}>{saving ? "Saving…" : "Save"}</button>
@@ -163,95 +168,36 @@
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 10, 14, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: min(10vh, 64px) 16px 16px;
-    z-index: 20;
-    animation: tern-fade-in 150ms var(--ease-out);
-  }
-  .dialog {
-    width: min(560px, 100%);
-    max-height: calc(100vh - 80px);
-    overflow: auto;
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
-    padding: 18px 20px 16px;
-    outline: none;
-    animation: tern-dialog-in 150ms var(--ease-out);
-  }
-  h2 {
-    margin: 0 0 12px;
-    font-size: 15px;
-    font-weight: 650;
-  }
-  .seg {
-    display: flex;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    overflow: hidden;
-    width: fit-content;
-    margin-bottom: 14px;
-  }
-  .seg button {
-    font-size: 12.5px;
-    padding: 4px 12px;
-    color: var(--muted);
-  }
-  .seg button.on {
-    background: var(--raised);
-    color: var(--text);
+  .engines {
+    margin-bottom: var(--s5);
   }
   .form {
     display: grid;
     grid-template-columns: 110px 1fr;
-    gap: 8px 12px;
+    gap: var(--s3) var(--s4);
     align-items: center;
   }
-  .form > label {
+  .form > label:not(.check) {
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
   }
   .row {
     display: flex;
-    gap: 8px;
+    gap: var(--s3);
     align-items: center;
-  }
-  input:not([type="checkbox"]),
-  select {
-    flex: 1;
     min-width: 0;
-    font: inherit;
-    font-size: 12.5px;
-    color: var(--text);
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 5px 8px;
-    outline: none;
   }
-  input.mono {
-    font-family: var(--mono);
-    font-size: 12px;
+  .row > .field {
+    flex: 1;
   }
-  input:focus,
-  select:focus {
-    border-color: var(--amber);
-  }
-  .port {
+  .row > .field.port {
     flex: 0 0 84px;
   }
   .colors {
     display: flex;
-    gap: 5px;
+    gap: var(--s1);
   }
-  .dot {
+  .swatch {
     width: 14px;
     height: 14px;
     border-radius: 50%;
@@ -259,23 +205,15 @@
     border: 1px solid var(--line-strong);
     padding: 0;
   }
-  .dot.none {
+  .swatch.none {
     background: linear-gradient(135deg, transparent 45%, var(--faint) 45% 55%, transparent 55%);
   }
-  .dot.on {
+  .swatch.on {
     outline: 2px solid var(--text);
     outline-offset: 1px;
   }
   .check {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12.5px;
-    color: var(--muted);
     white-space: nowrap;
-  }
-  .check input {
-    accent-color: var(--amber);
   }
   .writes {
     white-space: normal;
@@ -286,10 +224,10 @@
     margin-top: 3px;
   }
   .result {
-    margin: 14px 0 0;
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-size: 12px;
+    margin: var(--s4) 0 0;
+    padding: var(--s3) var(--s4);
+    border-radius: var(--radius);
+    font-size: var(--fs-sm);
     white-space: pre-wrap;
     color: var(--del);
     background: var(--del-bg);
@@ -298,34 +236,5 @@
   .result.ok {
     color: var(--add);
     background: var(--add-bg);
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 16px;
-  }
-  .grow {
-    flex: 1;
-  }
-  .btn {
-    font-size: 12.5px;
-    padding: 4px 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    color: var(--text);
-  }
-  .btn:hover:not(:disabled) {
-    background: var(--hover);
-  }
-  .btn.primary {
-    background: var(--amber);
-    border-color: var(--amber);
-    color: var(--on-accent);
-  }
-  .btn.danger {
-    color: var(--del);
-  }
-  .btn:disabled {
-    opacity: 0.5;
   }
 </style>

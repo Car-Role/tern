@@ -24,6 +24,8 @@
   import { codeMenu } from "../lib/menus";
   import { commitUrl } from "../lib/format";
   import { openUrl } from "../lib/api";
+  import { hover } from "../lib/hover";
+  import Icon from "./Icon.svelte";
 
   let host: HTMLDivElement | undefined = $state();
   let status = $state<"idle" | "loading" | "ready" | "error" | "binary" | "large">("idle");
@@ -38,6 +40,34 @@
   let merge: MergeView | null = null;
   const editable = new Compartment();
   const language = new Compartment();
+  /** Long lines wrap or scroll sideways. One switch for the file view and both diff layouts. */
+  const wrapping = new Compartment();
+  const WRAP_KEY = "scout.wrap";
+  let wrap = $state(readWrap());
+  function readWrap() {
+    try {
+      return localStorage.getItem(WRAP_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+  function toggleWrap() {
+    wrap = !wrap;
+    try {
+      localStorage.setItem(WRAP_KEY, wrap ? "1" : "0");
+    } catch {
+      /* storage blocked: the choice lasts until the window closes */
+    }
+  }
+  const wrapExt = () => wrapping.of(wrap ? EditorView.lineWrapping : []);
+
+  /** The blocks of change in the diff on screen, as positions in the new text. */
+  let chunkList: readonly Chunk[] = [];
+  let chunkTotal = $state(0);
+  /** The change the cursor is in, or -1. */
+  let chunkAt = $state(-1);
+  /** Asking about unsaved edits for this target; loads for it wait for the answer. */
+  let asking: string | null = null;
   let lastKey = "";
   let lastView: View | null = null;
   let lastMode: "split" | "unified" = "unified";
@@ -98,6 +128,54 @@
     editor?.destroy();
     merge?.destroy();
     editor = merge = null;
+    setChunks([]);
+  }
+
+  function setChunks(list: readonly Chunk[]) {
+    chunkList = list;
+    chunkTotal = list.length;
+    chunkAt = -1;
+  }
+
+  /** The change that holds a position in the new text, or -1. */
+  function chunkIndexAt(pos: number) {
+    return chunkList.findIndex((c) => pos >= c.fromB && pos <= Math.max(c.toB, c.fromB));
+  }
+
+  /** The view that holds the new text: the right side of a split diff, or the unified view. */
+  const newSide = () => (merge ? merge.b : editor);
+
+  /** Moves to the next (1) or previous (-1) change, wrapping around at the ends. */
+  function stepChange(dir: 1 | -1) {
+    const view = newSide();
+    const n = chunkList.length;
+    if (!view || !n) return;
+    const head = view.state.selection.main.head;
+    const at = chunkIndexAt(head);
+    let next: number;
+    if (at >= 0) next = (at + dir + n) % n;
+    else if (dir === 1) {
+      next = chunkList.findIndex((c) => c.fromB > head);
+      if (next < 0) next = 0;
+    } else {
+      next = -1;
+      for (let i = n - 1; i >= 0; i--) if (chunkList[i].fromB < head) { next = i; break; }
+      if (next < 0) next = n - 1;
+    }
+    const c = chunkList[next];
+    jumpTo(view, view.state.doc.lineAt(Math.min(c.fromB, view.state.doc.length)).number);
+    chunkAt = next;
+  }
+
+  /** Keys inside the viewer: F7 and Shift+F7 step through changes, Alt+Z wraps long lines. */
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === "F7" && !e.ctrlKey && !e.altKey && app.view?.kind === "diff" && chunkTotal) {
+      e.preventDefault();
+      stepChange(e.shiftKey ? -1 : 1);
+    } else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === "KeyZ" && canWrap) {
+      e.preventDefault();
+      toggleWrap();
+    }
   }
 
   function scroller(): HTMLElement | null {
@@ -132,6 +210,7 @@
     let to = doc.lineAt(sel.to).number;
     if (to > from && sel.to === doc.line(to).from) to--;
     app.lines = { from, to };
+    if (chunkList.length && u.view === newSide()) chunkAt = chunkIndexAt(sel.head);
   });
 
   const saveKey = keymap.of([{ key: "Mod-s", run: () => (save(), true) }]);
@@ -159,6 +238,8 @@
   }
 
   async function load(v: View | null, mode: "split" | "unified") {
+    // A reload of the same target while the unsaved-edits question is open waits for the answer.
+    if (asking && v && keyOf(v) === asking) return;
     const my = ++seq;
     if (!v || v.kind === "issue" || v.kind === "run") {
       destroy();
@@ -171,11 +252,25 @@
     const k = keyOf(v);
     const same = k === lastKey;
     if (dirty && !same) {
-      if (!confirm(`Discard your unsaved edits to ${lastView?.rel}?`)) {
-        app.view = lastView;
+      const rel = lastView?.rel ?? "this file";
+      asking = k;
+      let ok = false;
+      try {
+        ok = await app.ask({
+          title: "Discard unsaved edits?",
+          body: `Your edits to ${rel} are not saved. Opening another file throws them away.`,
+          confirm: "Discard edits",
+          danger: true,
+        });
+      } finally {
+        asking = null;
+      }
+      if (!ok) {
+        if (my === seq) app.view = lastView;
         return;
       }
       dirty = false;
+      if (my !== seq) return;
     }
     if (dirty && same) return;
     const wantJump = v.kind === "file" && !!v.line && v.jump !== lastJump;
@@ -223,7 +318,7 @@
             parent: host,
             state: EditorState.create({
               doc: f.text ?? "",
-              extensions: [baseExtensions({ editable, language, editing: app.editing }), trackSelection, saveKey, ctrlClick],
+              extensions: [baseExtensions({ editable, language, editing: app.editing }), wrapExt(), trackSelection, saveKey, ctrlClick],
             }),
           });
           editor.dispatch({ effects: language.reconfigure(langExt) });
@@ -278,13 +373,14 @@
     if (mode === "split") {
       merge = new MergeView({
         parent: host!,
-        a: { doc: oldText, extensions: diffExtensions(lang) },
-        b: { doc: newText, extensions: [diffExtensions(lang), trackSelection, ctrlClick] },
+        a: { doc: oldText, extensions: [diffExtensions(lang), wrapExt()] },
+        b: { doc: newText, extensions: [diffExtensions(lang), wrapExt(), trackSelection, ctrlClick] },
         collapseUnchanged: collapse,
         highlightChanges: true,
         gutter: true,
       });
       countChunks(merge.chunks, merge.a.state.doc, merge.b.state.doc);
+      setChunks(merge.chunks);
       if (import.meta.env.DEV) (window as unknown as { __merge: MergeView }).__merge = merge;
     } else {
       editor = new EditorView({
@@ -293,6 +389,7 @@
           doc: newText,
           extensions: [
             diffExtensions(lang),
+            wrapExt(),
             unifiedMergeView({ original: oldText, mergeControls: false, collapseUnchanged: collapse, highlightChanges: true, gutter: true }),
             trackSelection,
             ctrlClick,
@@ -300,7 +397,10 @@
         }),
       });
       const c = getChunks(editor.state);
-      if (c) countChunks(c.chunks, getOriginalDoc(editor.state), editor.state.doc);
+      if (c) {
+        countChunks(c.chunks, getOriginalDoc(editor.state), editor.state.doc);
+        setChunks(c.chunks);
+      }
     }
   }
 
@@ -322,9 +422,23 @@
     });
   });
 
+  // Turn line wrapping on or off in every code view on screen.
+  $effect(() => {
+    const on = wrap;
+    untrack(() => {
+      for (const view of viewsNow()) view.dispatch({ effects: wrapping.reconfigure(on ? EditorView.lineWrapping : []) });
+    });
+  });
+
   $effect(() => () => destroy());
 
   const v = $derived(app.view);
+  /** The folder part of the path in the toolbar ("" for a file at the project root). */
+  const dirText = $derived(
+    v && (v.kind === "file" || v.kind === "diff")
+      ? (v.kind === "file" && v.loose ? v.repo.replace(/\\/g, "/") + "/" : "") + (dirName(v.rel) ? dirName(v.rel) + "/" : "")
+      : "",
+  );
   /** Hunks belong to diffs of the working tree (not commits or pull requests). */
   const hunkable = $derived(v?.kind === "diff" && !v.rev && v.changeKind !== "deleted");
   const showHunks = $derived(hunkable && app.hunksOpen);
@@ -358,7 +472,7 @@
   const bigOk = $derived(rk === "csv" || rk === "tsv" || rk === "log" || rk === "json" || rk === "yaml" || rk === "toml");
   const page = $derived(pageable && app.mdPreview && !app.editing && (status === "ready" || (status === "large" && bigOk)));
   const pageLabel = $derived(
-    rk === "markdown" ? "Page" : rk === "csv" || rk === "tsv" ? "Table" : rk === "svg" ? "Image" : rk === "log" ? "Live" : "Tree",
+    rk === "markdown" ? "Page" : rk === "csv" || rk === "tsv" ? "Table" : rk === "svg" ? "Image" : rk === "log" ? "Log" : "Tree",
   );
 
   /** A link in a Markdown page to another file: open it, relative to this file. */
@@ -380,32 +494,120 @@
   const changed = $derived(
     v?.kind === "file" && !app.review ? app.summary?.changes.find((c) => c.path === v.rel) : undefined,
   );
+  /** Wrap applies to code on screen: the file view and both diff layouts. */
+  const canWrap = $derived((v?.kind === "file" || v?.kind === "diff") && !binary && status === "ready" && !page);
+  const showNav = $derived(v?.kind === "diff" && !binary && status === "ready" && chunkTotal > 0);
+
+  /** File or Diff: the other view of the same file, when there is one. */
+  const otherView = $derived.by((): { label: string; title: string; run: () => void } | null => {
+    if (v?.kind === "diff") {
+      if ((!v.rev || v.rev.head === "WORKTREE") && v.changeKind !== "deleted") {
+        const rel = v.rel;
+        return { label: "File", title: "Show the whole file", run: () => app.openFile(rel, app.lines?.from) };
+      }
+      return null;
+    }
+    const c = changed;
+    return c ? { label: "Diff", title: "Show what changed", run: () => app.openChange(c) } : null;
+  });
+  const canEdit = $derived(v?.kind === "file" && !app.editing && !binary && status !== "large");
+
+  /** The narrow-window menu: the actions that leave the toolbar when it has no room. */
+  function moreMenu(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const o = otherView;
+    app.showMenu({ x: r.left, y: r.bottom + 4 }, "More", [
+      ...(o ? [{ label: o.title, run: o.run }] : []),
+      ...(canEdit ? [{ label: "Quick edit", hint: "Ctrl E", run: () => (app.editing = true) }] : []),
+      { label: "Open in VS Code", hint: "Ctrl Shift E", run: () => app.open("editor") },
+      { label: "Copy for agent", hint: "Ctrl Shift C", run: () => (app.overlay = "copy") },
+    ]);
+  }
+
+  /** The empty screen's words and tips follow the tab on the left. */
+  type Tip = { keys: string[]; text: string };
+  const idle = $derived.by((): { lead: string; tips: Tip[] } => {
+    const n = app.summary?.changes.length ?? 0;
+    const copy: Tip = { keys: ["Ctrl Shift C"], text: "Copy paths or a diff for an agent" };
+    const help: Tip = { keys: ["F1"], text: "All shortcuts" };
+    switch (app.tab) {
+      case "changes":
+        return {
+          lead: n ? `${n} changed ${n === 1 ? "file" : "files"}. Use ↑ ↓ to step through them.` : "No changes. Edit a file and it shows up here.",
+          tips: [
+            { keys: ["Space"], text: "Select more than one file" },
+            { keys: ["S"], text: "Stage or unstage" },
+            { keys: ["Ctrl Enter"], text: "Commit the staged files" },
+            { keys: ["F7"], text: "Next change in a diff" },
+            copy,
+            help,
+          ],
+        };
+      case "prs":
+        return { lead: "Pick a pull request to review its changes.", tips: [{ keys: ["↑", "↓"], text: "Step through the list" }, { keys: ["F7"], text: "Next change in a diff" }, copy, help] };
+      case "issues":
+        return { lead: "Pick an issue to read it here.", tips: [{ keys: ["↑", "↓"], text: "Step through the list" }, help] };
+      case "history":
+        return { lead: "Pick a commit to see the files it changed.", tips: [{ keys: ["↑", "↓"], text: "Step through the list" }, { keys: ["F7"], text: "Next change in a diff" }, copy, help] };
+      case "ci":
+        return { lead: "Pick a run to see its stages and jobs.", tips: [{ keys: ["↑", "↓"], text: "Step through the list" }, help] };
+      case "tasks":
+        return { lead: "Run a task from the list, or open a terminal.", tips: [{ keys: ["Ctrl `"], text: "Open a terminal in this project" }, { keys: ["Ctrl J"], text: "Show or hide the bottom panel" }, help] };
+      default:
+        return {
+          lead: "Pick a file, or press Ctrl P to find one.",
+          tips: [{ keys: ["Ctrl P"], text: "Find a file by name" }, { keys: ["Ctrl E"], text: "Quick edit the open file" }, copy, help],
+        };
+    }
+  });
+
+  function retry() {
+    lastKey = "";
+    lastText = "";
+    load(app.view, app.diffMode);
+  }
 </script>
 
-<section class="viewer" aria-label="Viewer">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<section class="viewer" aria-label="Viewer" onkeydown={onKeydown}>
   {#if v && v.kind !== "issue" && v.kind !== "run"}
-    <header>
-      <button class="path" onclick={() => app.copy(v.kind === "file" && v.loose ? "absolute" : "relative")} title={v.kind === "file" && v.loose ? "Copy full path" : "Copy relative path"}>
-        {#if v.kind === "file" && v.loose}<span class="dir">{v.repo.replace(/\\/g, "/")}/</span>{/if}
+    <header class="toolbar">
+      <button class="path" class:code={v.kind === "diff"} onclick={() => app.copy(v.kind === "file" && v.loose ? "absolute" : "relative")}
+        use:hover={() => ({ title: v.kind === "file" && v.loose ? "Copy full path" : "Copy relative path", hint: "Ctrl Shift C for more ways to copy" })}>
         {#if v.kind === "diff"}<span class="kind mono k-{v.changeKind}">{kindLetter[v.changeKind]}</span>{/if}
-        <span class="dir">{dirName(v.rel) ? dirName(v.rel) + "/" : ""}</span><span class="file">{baseName(v.rel)}</span>
+        <span class="name">{#if dirText}<span class="dir">{dirText}</span>{/if}<span class="file">{baseName(v.rel)}</span></span>
       </button>
-      {#if v.kind === "diff" && v.oldRel}<span class="faint mono renamed">from {v.oldRel}</span>{/if}
+      {#if v.kind === "diff" && v.oldRel}<span class="meta mono">from {v.oldRel}</span>{/if}
       {#if counts}<span class="counts mono"><span class="add">+{counts.add}</span> <span class="del">−{counts.del}</span></span>{/if}
       {#if revSha && app.review?.kind === "commit"}
-        <button class="shachip mono" onclick={() => app.copyValue(revSha, `commit ID ${revSha.slice(0, 7)}`)}
+        <button class="chip mono sha" onclick={() => app.copyValue(revSha, `commit ID ${revSha.slice(0, 7)}`)}
+          use:hover={() => ({ title: "Copy commit ID", rows: [{ label: "Commit", value: revSha, mono: true }], hint: "Right-click for more" })}
           oncontextmenu={(e) => { const url = commitUrl(app.summary?.remote, revSha); app.showMenu(e, revSha.slice(0, 7), [
             { label: "Copy commit ID", run: () => app.copyValue(revSha.slice(0, 7)) },
             { label: "Copy the full commit ID", run: () => app.copyValue(revSha) },
-            ...(url ? [{ label: "Open on the web", run: () => openUrl(url) }] : []),
+            ...(url ? [{ label: "Open in browser", run: () => openUrl(url) }] : []),
           ]); }}>{revSha.slice(0, 7)}</button>
       {/if}
       {#if app.lines && status === "ready" && !page}
-        <button class="lines mono" onclick={() => app.copy("line")} title="Copy path with line numbers">
+        <button class="chip mono lines" onclick={() => app.copy("line")} use:hover={() => ({ title: "Copy path with line numbers" })}>
           L{app.lines.from}{app.lines.to !== app.lines.from ? `–${app.lines.to}` : ""}
         </button>
       {/if}
       <span class="grow"></span>
+
+      {#if showNav}
+        <div class="nav" role="group" aria-label="Changes">
+          <button class="icon-btn sm" onclick={() => stepChange(-1)} aria-label="Previous change"
+            use:hover={() => ({ title: "Previous change", hint: "Shift F7" })}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 10l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </button>
+          <span class="meta nav-label">{chunkAt >= 0 ? `Change ${chunkAt + 1} of ${chunkTotal}` : `${chunkTotal} ${chunkTotal === 1 ? "change" : "changes"}`}</span>
+          <button class="icon-btn sm" onclick={() => stepChange(1)} aria-label="Next change"
+            use:hover={() => ({ title: "Next change", hint: "F7" })}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </button>
+        </div>
+      {/if}
 
       {#if v.kind === "diff"}
         {#if !binary}
@@ -415,30 +617,44 @@
           </div>
         {/if}
         {#if hunkable && !binary}
-          <button class="btn" class:on={app.hunksOpen} onclick={() => app.toggleHunks()} title="Stage, unstage, or discard one block of changes (Ctrl+Shift+H)">Hunks</button>
+          <button class="btn sm" class:ghost={!app.hunksOpen} class:on={app.hunksOpen} aria-pressed={app.hunksOpen} onclick={() => app.toggleHunks()}
+            use:hover={() => ({ title: "Hunks", text: "Stage, unstage, or discard one block of changes.", hint: "Ctrl Shift H" })}>Hunks</button>
         {/if}
+      {:else if pageable}
+        <div class="seg" role="group" aria-label="Layout">
+          <button class:on={app.mdPreview && !app.editing} onclick={() => { if (!app.mdPreview) app.toggleMdPreview(); app.editing = false; }}
+            use:hover={() => ({ title: `Show as a ${pageLabel.toLowerCase()}`, hint: "Ctrl Shift V" })}>{pageLabel}</button>
+          <button class:on={!app.mdPreview || app.editing} onclick={() => app.mdPreview && app.toggleMdPreview()}
+            use:hover={() => ({ title: "Show the source", hint: "Ctrl Shift V" })}>Source</button>
+        </div>
+      {/if}
+      {#if canWrap}
+        <button class="btn sm" class:ghost={!wrap} class:on={wrap} aria-pressed={wrap} onclick={toggleWrap}
+          use:hover={() => ({ title: wrap ? "Long lines wrap" : "Long lines scroll sideways", hint: "Alt Z" })}>Wrap</button>
+      {/if}
+      {#if showNav || (v.kind === "diff" && !binary) || pageable || canWrap}<span class="sep"></span>{/if}
+
+      {#if v.kind === "diff"}
         {#if (!v.rev || v.rev.head === "WORKTREE") && v.changeKind !== "deleted"}
-          <button class="btn" onclick={() => app.openFile(v.rel, app.lines?.from)} title="Show the whole file">File</button>
+          <button class="btn sm ghost lo" onclick={() => app.openFile(v.rel, app.lines?.from)} use:hover={() => ({ title: "Show the whole file" })}>File</button>
         {/if}
       {:else}
-        {#if pageable}
-          <div class="seg" role="group" aria-label="Layout">
-            <button class:on={app.mdPreview && !app.editing} onclick={() => { if (!app.mdPreview) app.toggleMdPreview(); app.editing = false; }} title="Show as a {pageLabel.toLowerCase()} (Ctrl+Shift+V)">{pageLabel}</button>
-            <button class:on={!app.mdPreview || app.editing} onclick={() => app.mdPreview && app.toggleMdPreview()} title="Show the source (Ctrl+Shift+V)">Source</button>
-          </div>
-        {/if}
         {#if changed}
-          <button class="btn" onclick={() => app.openChange(changed)} title="Show what changed">Diff</button>
+          <button class="btn sm ghost lo" onclick={() => app.openChange(changed)} use:hover={() => ({ title: "Show what changed" })}>Diff</button>
         {/if}
         {#if app.editing}
-          <button class="btn primary" disabled={!dirty || saving} onclick={save}>{saving ? "Saving…" : dirty ? "Save" : "Saved"}</button>
-          <button class="btn" onclick={() => (app.editing = false)}>Done</button>
+          <button class="btn sm primary" disabled={!dirty || saving} onclick={save} use:hover={() => ({ title: "Save", hint: "Ctrl S" })}>{saving ? "Saving…" : dirty ? "Save" : "Saved"}</button>
+          <button class="btn sm ghost" onclick={() => (app.editing = false)} use:hover={() => ({ title: "Stop editing", hint: "Esc" })}>Done</button>
         {:else if !binary && status !== "large"}
-          <button class="btn" onclick={() => (app.editing = true)} title="Quick edit (Ctrl+E)">Edit</button>
+          <button class="btn sm ghost lo" onclick={() => (app.editing = true)} use:hover={() => ({ title: "Quick edit", hint: "Ctrl E" })}>Edit</button>
         {/if}
       {/if}
-      <button class="btn" onclick={() => app.open("editor")} title="Open in VS Code (Ctrl+Shift+E)">VS Code</button>
-      <button class="btn" onclick={() => (app.overlay = "copy")} title="Copy for an agent (Ctrl+Shift+C)">Copy</button>
+      <button class="btn sm ghost lo" onclick={() => app.open("editor")} use:hover={() => ({ title: "Open in VS Code", hint: "Ctrl Shift E" })}>VS Code</button>
+      <button class="btn sm ghost lo" onclick={() => (app.overlay = "copy")} use:hover={() => ({ title: "Copy paths or a diff for an agent", hint: "Ctrl Shift C" })}>Copy for agent</button>
+      <button class="icon-btn sm more" onclick={moreMenu} aria-label="More actions" aria-haspopup="menu"
+        use:hover={() => ({ title: "More actions", text: [otherView?.label, canEdit ? "Edit" : "", "VS Code", "Copy for agent"].filter(Boolean).join(", ") })}>
+        <Icon name="more" />
+      </button>
     </header>
   {/if}
 
@@ -463,7 +679,15 @@
             {#if v.changeKind === "deleted"}<PdfView repo={v.repo} rel={v.oldRel ?? v.rel} rev={base} />{:else}<PdfView repo={v.repo} rel={v.rel} rev={head} />{/if}
           {/key}
         {:else if rk === "sqlite"}
-          <p class="note">This is an SQLite database, so there is no text diff. Open the file to look inside it.</p>
+          <div class="cover">
+            <div class="state">
+              <span class="state-title">No text diff</span>
+              <p>This is an SQLite database. Open the file to look inside it.</p>
+              {#if v.changeKind !== "deleted"}
+                <div class="actions"><button class="btn" onclick={() => app.openFile(v.rel)}>Open the file</button></div>
+              {/if}
+            </div>
+          </div>
         {:else}
           <ImageDiff repo={v.repo} rel={v.rel} oldRel={v.oldRel ?? null} {base} {head} />
         {/if}
@@ -482,32 +706,43 @@
     <div class="cm" bind:this={host} class:hidden={status !== "ready" || v?.kind === "issue" || v?.kind === "run" || page || binary}
       class:with-hunks={showHunks} oncontextmenu={onContext}></div>
     {#if page}
-      <!-- The page view covers the note below. -->
+      <!-- The page view covers the states below. -->
     {:else if status === "loading"}
-      <p class="note">Loading…</p>
+      <div class="cover delay"><div class="state"><p>Loading…</p></div></div>
     {:else if status === "binary"}
-      <p class="note">This is a binary file ({message}). There is no text to show.</p>
+      <div class="cover">
+        <div class="state">
+          <span class="state-title">Binary file</span>
+          <p>This file ({message}) has no text to show.</p>
+          <div class="actions"><button class="btn" onclick={() => app.open("explorer")}>Show in folder</button></div>
+        </div>
+      </div>
     {:else if status === "large"}
-      <p class="note">This file is {message}. Files over 5 MB do not open here. Open it in VS Code instead.</p>
+      <div class="cover">
+        <div class="state">
+          <span class="state-title">Too large to open here</span>
+          <p>This file is {message}. Files over 5 MB do not open in Tern.</p>
+          <div class="actions"><button class="btn" onclick={() => app.open("editor")}>Open in VS Code</button></div>
+        </div>
+      </div>
     {:else if status === "error"}
-      <div class="note">
-        <p>Could not open this file.</p>
-        <pre class="err">{message}</pre>
+      <div class="cover">
+        <div class="state">
+          <span class="state-title">Could not open this file</span>
+          <pre>{message}</pre>
+          <div class="actions"><button class="btn" onclick={retry}>Try again</button></div>
+        </div>
       </div>
     {:else if status === "idle" && v?.kind !== "issue" && v?.kind !== "run"}
-      <div class="idle">
-        {#if app.summary?.changes.length && app.tab === "changes"}
-          <p>{app.summary.changes.length} changed files. Use <kbd>↑</kbd> <kbd>↓</kbd> in the list to step through them.</p>
-        {:else}
-          <p>Pick a file on the left, or press <kbd>Ctrl P</kbd> to find one.</p>
-        {/if}
-        <dl>
-          <dt><kbd>Ctrl Shift C</kbd></dt><dd>Copy paths or a diff for an agent</dd>
-          <dt><kbd>Space</kbd></dt><dd>Select more than one file</dd>
-          <dt><kbd>S</kbd></dt><dd>Stage or unstage, then <kbd>Ctrl Enter</kbd> to commit</dd>
-          <dt><kbd>Ctrl `</kbd></dt><dd>Open a terminal in this project</dd>
-          <dt><kbd>F1</kbd></dt><dd>All shortcuts</dd>
-        </dl>
+      <div class="cover">
+        <div class="state idle">
+          <span class="state-title">{idle.lead}</span>
+          <dl>
+            {#each idle.tips as tip (tip.text)}
+              <dt>{#each tip.keys as k, i}{#if i}{" "}{/if}<kbd>{k}</kbd>{/each}</dt><dd>{tip.text}</dd>
+            {/each}
+          </dl>
+        </div>
       </div>
     {/if}
   </div>
@@ -521,47 +756,66 @@
     min-height: 0;
     background: var(--bg);
   }
-  header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 10px 0 14px;
-    height: 41px;
-    border-bottom: 1px solid var(--line);
-    flex-shrink: 0;
+  .toolbar {
     white-space: nowrap;
+    /* Narrow windows: the actions below move into the ⋯ menu (container queries at the end). */
+    container: viewerbar / inline-size;
+  }
+  /* Everything keeps its size except the path and the "from" note, which shrink. */
+  .toolbar > :global(*) {
+    flex-shrink: 0;
+  }
+  .toolbar > .path,
+  .toolbar > .meta {
+    flex-shrink: 1;
   }
   .path {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--s2);
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: var(--fs-md);
+  }
+  /* Diff paths are code-like; a file's name reads as a title. */
+  .path.code {
     font-family: var(--mono);
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
   }
   .path:hover .file {
     text-decoration: underline;
-    text-decoration-color: var(--amber);
+    text-decoration-color: var(--line-strong);
   }
+  /* The folder gives way first; the file name shrinks only when the folder is gone. */
   .dir {
     color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    flex-shrink: 100000;
+  }
+  .dir:empty {
+    display: none;
   }
   .file {
     color: var(--text);
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  /* Folder and file name sit flush, as one path. */
+  .name {
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
   }
   .kind {
     font-weight: 700;
   }
-  .renamed {
-    font-size: 11px;
-  }
   .counts {
-    font-size: 11.5px;
+    font-size: var(--fs-xs);
   }
   .add {
     color: var(--add);
@@ -569,59 +823,40 @@
   .del {
     color: var(--del);
   }
-  .lines {
-    font-size: 11px;
-    color: var(--amber);
-    background: var(--amber-soft);
-    padding: 1px 6px;
-    border-radius: 4px;
+  .chip.sha,
+  .chip.lines {
+    cursor: pointer;
   }
-  .grow {
-    flex: 1;
+  .chip.sha:hover,
+  .chip.lines:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
   }
-  .shachip {
-    font-size: 11px;
-    color: var(--amber);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 0 6px;
-  }
-  .shachip:hover {
-    border-color: var(--amber);
-  }
-  .seg {
+  .nav {
     display: flex;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    overflow: hidden;
+    align-items: center;
+    gap: 2px;
   }
-  .seg button {
-    font-size: 12px;
-    padding: 2px 8px;
-    color: var(--muted);
+  .nav-label {
+    min-width: 92px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
-  .seg button.on {
-    background: var(--raised);
-    color: var(--text);
+  .more {
+    display: none;
   }
-  .btn {
-    font-size: 12px;
-    padding: 2px 8px;
-    border-radius: var(--radius);
-    color: var(--muted);
-    border: 1px solid transparent;
+  @container viewerbar (max-width: 760px) {
+    .lo {
+      display: none;
+    }
+    .more {
+      display: inline-flex;
+    }
   }
-  .btn:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--line);
-  }
-  .btn.primary {
-    color: var(--on-accent);
-    background: var(--amber);
-  }
-  .btn.primary:disabled {
-    background: var(--raised);
-    color: var(--muted);
+  @container viewerbar (max-width: 600px) {
+    .nav-label {
+      display: none;
+    }
   }
   .body {
     flex: 1;
@@ -637,23 +872,37 @@
   .cm.with-hunks {
     right: min(400px, 45%);
   }
-  .btn.on {
-    color: var(--text);
-    border-color: var(--line-strong);
-    background: var(--raised);
-  }
   .cm.hidden {
     visibility: hidden;
   }
+  /* Split diff: the two sides scroll up and down together in one box; each side scrolls sideways
+     only when its lines are too long. Both sides fill the pane, so short files leave no gap. */
   .cm :global(.cm-mergeView) {
     height: 100%;
     overflow-y: auto;
+    overflow-x: hidden;
   }
   .cm :global(.cm-mergeViewEditors) {
     min-height: 100%;
   }
+  .cm :global(.cm-mergeViewEditor) {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
   .cm :global(.cm-mergeView .cm-editor) {
     height: auto;
+    flex: 1 0 auto;
+  }
+  /* The scroller fills its side, so a sideways scrollbar sits at the bottom edge, not under the last line. */
+  .cm :global(.cm-mergeView .cm-scroller) {
+    flex: 1 1 auto;
+    overflow-x: auto;
+    overflow-y: hidden !important;
+  }
+  /* The single-view room to scroll the last line up is not needed here: the box scrolls, not the editor. */
+  .cm :global(.cm-mergeView .cm-content) {
+    padding-bottom: var(--s6);
   }
   .cm :global(.cm-merge-a) {
     border-right: 1px solid var(--line);
@@ -661,42 +910,30 @@
   .cm > :global(.cm-editor) {
     height: 100%;
   }
-  .note {
-    position: absolute;
-    top: 24px;
-    left: 24px;
-    right: 24px;
-    margin: 0;
-    color: var(--muted);
-  }
-  .err {
-    color: var(--del);
-    font-family: var(--mono);
-    font-size: 12px;
-    white-space: pre-wrap;
-    user-select: text;
-  }
-  .idle {
+  /* States sit over the (hidden) code area. */
+  .cover {
     position: absolute;
     inset: 0;
     display: flex;
-    flex-direction: column;
-    /* "safe": when the tips do not fit, they start at the top instead of spilling out. */
-    justify-content: safe center;
     overflow: auto;
-    padding: 16px 12%;
-    color: var(--muted);
   }
-  .idle p {
-    font-size: 14px;
-    color: var(--text);
-    margin: 0 0 20px;
+  /* Loading that ends within 300 ms shows nothing. */
+  .cover.delay {
+    animation: tern-fade-in 150ms var(--ease-out) 300ms both;
+  }
+  .state.idle {
+    max-width: 520px;
+    gap: var(--s5);
+  }
+  .state.idle .state-title {
+    font-size: var(--fs-lg);
   }
   dl {
     display: grid;
     grid-template-columns: max-content 1fr;
-    gap: 8px 16px;
+    gap: var(--s3) var(--s5);
     margin: 0;
+    text-align: left;
   }
   dt {
     text-align: right;

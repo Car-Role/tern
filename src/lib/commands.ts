@@ -26,20 +26,20 @@ const inRepo = (fn: (repo: string) => void) => () => {
 export const commands: Cmd[] = [
   { id: "go.projects", group: "Go", label: "Go to project", keys: "Ctrl+K", run: palette("projects") },
   { id: "go.files", group: "Go", label: "Go to file", keys: "Ctrl+P", run: palette("files") },
-  { id: "go.search", group: "Go", label: "Search code, files, commits, and more across repos", keys: "Ctrl+Shift+F", run: () => app.openSearch({}) },
+  { id: "go.search", group: "Go", label: "Search code, files, commits, and more across projects", keys: "Ctrl+Shift+F", run: () => app.openSearch({}) },
   { id: "go.searchHere", group: "Go", label: "Search in this file", keys: "Ctrl+F", run: () => app.searchHere() },
   { id: "go.data", group: "Go", label: "Databases: SQLite, Postgres, SQL Server, Redis", keys: "Ctrl+Shift+D", run: () => (app.dataOpen ? app.closeData() : app.openData()) },
   { id: "go.tickets", group: "Go", label: "Show my tickets", keys: "Ctrl+Shift+T", run: () => (app.ticketsOpen ? app.closeTickets() : app.openTickets()) },
   { id: "go.definition", group: "Go", label: "Go to definition", keys: "F12", run: () => app.goToDefinition() },
   { id: "go.usages", group: "Go", label: "Find where it is used", keys: "Shift+F12", run: () => app.findUsages() },
   { id: "go.commands", group: "Go", label: "Run a command", keys: "Ctrl+Shift+P", run: palette("commands") },
-  { id: "go.overview", group: "Go", label: "Show all projects", keys: "Ctrl+0", run: () => app.select(null) },
+  { id: "go.overview", group: "Go", label: "Go home (all projects)", keys: "Ctrl+0", run: () => app.select(null) },
   { id: "go.back", group: "Go", label: "Go back", keys: "Alt+←", run: () => app.back() },
   { id: "go.forward", group: "Go", label: "Go forward", keys: "Alt+→", run: () => app.forward() },
   { id: "go.next", group: "Go", label: "Next project", keys: "Alt+↓", run: () => app.step(1) },
   { id: "go.prev", group: "Go", label: "Previous project", keys: "Alt+↑", run: () => app.step(-1) },
-  // Ctrl+1 to Ctrl+6 pick the Nth tab the project shows, so they follow each space's own tabs.
-  ...Array.from({ length: 6 }, (_, i): Cmd => ({
+  // Ctrl+1 to Ctrl+7 pick the Nth tab the project shows, so they follow each space's own tabs.
+  ...Array.from({ length: 7 }, (_, i): Cmd => ({
     id: `tab.${i + 1}`,
     group: "Go",
     label: `Show tab ${i + 1}`,
@@ -52,8 +52,9 @@ export const commands: Cmd[] = [
   { id: "tab.prs", group: "Go", label: "Show pull requests", run: () => app.setTab("prs") },
   { id: "tab.issues", group: "Go", label: "Show issues", run: () => app.setTab("issues") },
   { id: "tab.history", group: "Go", label: "Show history", run: () => app.setTab("history") },
+  { id: "tab.ci", group: "Go", label: "Show CI runs", run: () => app.setTab("ci") },
   { id: "tab.tasks", group: "Go", label: "Show tasks", run: () => app.setTab("tasks") },
-  { id: "go.clone", group: "Go", label: "Clone a repo…", keys: "Ctrl+Shift+O", run: () => (app.overlay = "clone") },
+  { id: "go.clone", group: "Go", label: "Clone a project…", keys: "Ctrl+Shift+O", run: () => (app.overlay = "clone") },
 
   { id: "space.pick", group: "Spaces", label: "Switch space…", keys: "Ctrl+Shift+S", run: () => (app.overlay = "spaces") },
   { id: "space.move", group: "Spaces", label: "Move this project to a space…", run: inRepo(() => (app.overlay = "move")) },
@@ -70,7 +71,7 @@ export const commands: Cmd[] = [
     },
   })),
 
-  { id: "copy.menu", group: "Copy", label: "Copy for an agent…", keys: "Ctrl+Shift+C", run: () => (app.overlay = "copy") },
+  { id: "copy.menu", group: "Copy", label: "Copy for agent…", keys: "Ctrl+Shift+C", run: () => (app.overlay = "copy") },
   { id: "copy.relative", group: "Copy", label: "Copy relative path", keys: "Ctrl+Alt+R", run: () => app.copy("relative") },
   { id: "copy.absolute", group: "Copy", label: "Copy absolute path", keys: "Ctrl+Alt+A", run: () => app.copy("absolute") },
   { id: "copy.line", group: "Copy", label: "Copy path with line numbers", keys: "Ctrl+Alt+L", run: () => app.copy("line") },
@@ -105,7 +106,7 @@ export const commands: Cmd[] = [
   { id: "git.discardAll", group: "Git", label: "Discard all changes…", run: inRepo(() => app.discardChanges("all")) },
   { id: "git.undoDiscard", group: "Git", label: "Undo the last discard", run: () => app.undoDiscard() },
   { id: "git.undoCommit", group: "Git", label: "Undo the last commit (keep its changes)…", run: inRepo(() => app.undoLastCommit()) },
-  { id: "git.fetchAll", group: "Git", label: "Fetch all projects", keys: "Ctrl+Alt+F", run: () => app.fetchAll() },
+  { id: "git.fetchAll", group: "Git", label: "Fetch all", keys: "Ctrl+Alt+F", run: () => app.fetchAll() },
   { id: "git.fetch", group: "Git", label: "Fetch this project", run: inRepo((r) => app.action(r, "fetch")) },
   { id: "git.pull", group: "Git", label: "Pull this project (fast-forward only)", run: inRepo((r) => app.action(r, "pull")) },
   { id: "git.push", group: "Git", label: "Push this project", run: inRepo((r) => app.action(r, "push")) },
@@ -129,7 +130,7 @@ export const commands: Cmd[] = [
   {
     id: "task.copy",
     group: "Tasks",
-    label: "Copy task output for an agent",
+    label: "Copy task output for agent",
     run: () => (app.activeRun ? app.copyRunOutput(app.activeRun) : app.notify("No task in the panel.", "info")),
   },
   { id: "open.terminal", group: "Open", label: "Open this project's terminal", keys: "Ctrl+`", run: () => app.toggleTerminal() },
@@ -138,7 +139,7 @@ export const commands: Cmd[] = [
   { id: "open.external", group: "Open", label: "Open an external terminal here", run: () => app.open("terminal") },
   { id: "open.externalAgent", group: "Open", label: "Start Claude Code in an external terminal", run: () => app.open("agent") },
   { id: "open.editor", group: "Open", label: "Open in VS Code", keys: "Ctrl+Shift+E", run: () => app.open("editor") },
-  { id: "open.explorer", group: "Open", label: "Show in File Explorer", run: () => app.open("explorer") },
+  { id: "open.explorer", group: "Open", label: "Show in folder", run: () => app.open("explorer") },
   { id: "open.pr", group: "Open", label: "Open pull request in browser", run: () => app.openPrInBrowser() },
 
   {
@@ -171,6 +172,8 @@ export const commands: Cmd[] = [
     label: "Sort changes by most recent",
     run: () => app.setSortRecent(!app.sortRecent),
   },
+  { id: "view.sidebar", group: "View", label: "Show or hide the sidebar", keys: "Ctrl+\\", run: () => app.toggleSidebar() },
+  { id: "view.notices", group: "View", label: "Show notifications", run: () => app.toggleNotices() },
   { id: "view.help", group: "View", label: "Keyboard shortcuts", keys: "F1", run: () => (app.overlay = "help") },
   { id: "view.theme", group: "View", label: "Choose a theme…", run: () => (app.overlay = "settings") },
   { id: "view.settings", group: "View", label: "Settings", keys: "Ctrl+,", run: () => (app.overlay = "settings") },

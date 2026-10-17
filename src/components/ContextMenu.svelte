@@ -60,7 +60,7 @@
     {:else}
       <button role="menuitem" class="item" class:on={i === active} class:danger={it.danger} disabled={it.disabled}
         onmousemove={() => (active = i)} onclick={() => choose(i)}>
-        <span>{it.label}</span>{#if it.hint}<kbd>{it.hint}</kbd>{/if}
+        <span class="label">{it.label}</span>{#if it.hint}<kbd>{it.hint.replaceAll("+", " ")}</kbd>{/if}
       </button>
     {/if}
   {/each}
@@ -78,18 +78,18 @@
     min-width: 220px;
     max-width: 380px;
     background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
-    padding: 4px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-pop);
+    padding: var(--s1);
     outline: none;
+    animation: tern-fade-in 120ms var(--ease-out);
   }
   .title {
     margin: 0;
-    padding: 5px 10px 4px;
-    font-size: 11.5px;
+    padding: var(--s1) var(--s3);
+    font-size: var(--fs-xs);
     font-weight: 600;
-    color: var(--muted);
+    color: var(--faint);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -98,23 +98,28 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: var(--s5);
     width: 100%;
+    height: var(--h-ctl);
     text-align: left;
-    padding: 5px 10px;
-    border-radius: 5px;
+    padding: 0 var(--s3);
+    font-size: var(--fs-md);
+    border-radius: var(--r-sm);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
-  .item span {
+  .label {
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
   }
   .item.on {
     background: var(--raised);
   }
-  .item.danger.on {
+  .item.danger {
     color: var(--del);
+  }
+  .item.danger.on {
+    background: var(--del-bg);
   }
   .item:disabled {
     color: var(--faint);
@@ -123,6 +128,6 @@
   .sep {
     height: 1px;
     background: var(--line);
-    margin: 4px 6px;
+    margin: var(--s1) var(--s2);
   }
 </style>

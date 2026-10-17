@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from "../lib/store.svelte";
   import type { Hunk } from "../lib/types";
+  import { hover } from "../lib/hover";
 
   const h = $derived(app.hunks);
   const MAX_LINES = 14;
@@ -19,7 +20,7 @@
   {@const busy = app.hunkBusy === hk.patch}
   <div class="hunk" class:busy>
     <div class="hhead">
-      <button class="jump mono" onclick={() => app.jumpToLine(hk.newStart)} title="Show this change in the diff">L{hk.newStart}</button>
+      <button class="jump mono" onclick={() => app.jumpToLine(hk.newStart)} use:hover={() => ({ title: "Show this change in the diff" })}>L{hk.newStart}</button>
       <span class="hlabel mono">{label(hk)}</span>
       <span class="counts mono"><span class="a">+{hk.added}</span> <span class="d">−{hk.removed}</span></span>
     </div>
@@ -27,40 +28,52 @@
 </span>{/each}{#if hk.lines.length > MAX_LINES}<span class="more">… {hk.lines.length - MAX_LINES} more lines</span>{/if}</pre>
     <div class="hact">
       {#if staged}
-        <button class="hb" disabled={busy} onclick={() => app.applyHunk(hk, "unstage")}>Unstage</button>
+        <button class="btn sm" disabled={busy} onclick={() => app.applyHunk(hk, "unstage")}>Unstage</button>
       {:else}
-        <button class="hb primary" disabled={busy} onclick={() => app.applyHunk(hk, "stage")}>Stage</button>
-        <button class="hb danger" disabled={busy} onclick={() => app.applyHunk(hk, "discard")}>Discard</button>
+        <button class="btn sm danger" disabled={busy} onclick={() => app.applyHunk(hk, "discard")}>Discard</button>
+        <button class="btn sm" disabled={busy} onclick={() => app.applyHunk(hk, "stage")}>Stage</button>
       {/if}
     </div>
   </div>
 {/snippet}
 
 <aside class="hunks" aria-label="Hunks">
-  <header>
+  <header class="toolbar sub">
     <span class="title">Hunks</span>
-    <span class="faint">Stage or discard one block of changes</span>
+    <span class="meta">Stage or discard one block of changes</span>
     <span class="grow"></span>
-    <button class="x" onclick={() => app.toggleHunks(false)} aria-label="Close hunks" title="Close (Ctrl+Shift+H)">×</button>
+    <button class="icon-btn sm" onclick={() => app.toggleHunks(false)} aria-label="Close hunks"
+      use:hover={() => ({ title: "Close hunks", hint: "Ctrl Shift H" })}>
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+    </button>
   </header>
   <div class="body">
     {#if !h || h.loading}
-      <p class="note">Reading the changes…</p>
+      <div class="state"><p>Reading the changes…</p></div>
     {:else if h.error}
-      <p class="note err mono">{h.error}</p>
+      <div class="state">
+        <span class="state-title">Could not read the changes</span>
+        <pre>{h.error}</pre>
+      </div>
     {:else if h.untracked}
-      <p class="note">This is a new file, so it has no blocks yet. Stage the whole file from the list (<kbd>S</kbd>).</p>
+      <div class="state">
+        <span class="state-title">New file</span>
+        <p>It has no blocks yet. Stage the whole file from the list (<kbd>S</kbd>).</p>
+      </div>
     {:else if h.data?.binary}
-      <p class="note">This is a binary file. Stage or discard the whole file from the list.</p>
+      <div class="state">
+        <span class="state-title">Binary file</span>
+        <p>Stage or discard the whole file from the list.</p>
+      </div>
     {:else if h.data && !h.data.unstaged.length && !h.data.staged.length}
-      <p class="note">No changes left in this file.</p>
+      <div class="state"><p>No changes left in this file.</p></div>
     {:else if h.data}
       {#if h.data.unstaged.length}
-        <div class="sec">Not staged <span class="faint">{h.data.unstaged.length}</span></div>
+        <div class="section-label">Not staged <span class="badge">{h.data.unstaged.length}</span></div>
         {#each h.data.unstaged as hk (hk.patch)}{@render hunk(hk, false)}{/each}
       {/if}
       {#if h.data.staged.length}
-        <div class="sec">Staged <span class="faint">{h.data.staged.length}</span></div>
+        <div class="section-label">Staged <span class="badge">{h.data.staged.length}</span></div>
         {#each h.data.staged as hk (hk.patch)}{@render hunk(hk, true)}{/each}
       {/if}
     {/if}
@@ -80,55 +93,28 @@
     border-left: 1px solid var(--line);
     animation: tern-fade-in 150ms var(--ease-out);
   }
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    padding: 10px 10px 8px 14px;
-    border-bottom: 1px solid var(--line);
-    font-size: 12px;
-  }
-  .title {
-    font-weight: 650;
-    font-size: 13px;
-  }
-  .grow {
-    flex: 1;
-  }
-  .x {
-    color: var(--muted);
-    font-size: 16px;
-    line-height: 1;
-    padding: 0 4px;
-  }
-  .x:hover {
-    color: var(--text);
+  .toolbar .meta {
+    flex-shrink: 1;
   }
   .body {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
-    padding: 4px 10px 16px;
+    padding: var(--s1) var(--s3) var(--s5);
   }
-  .sec {
-    font-size: 11.5px;
-    font-weight: 600;
-    color: var(--muted);
-    padding: 12px 4px 6px;
+  .body > .state {
+    margin: 0 auto;
   }
-  .note {
-    color: var(--muted);
-    font-size: 12.5px;
-    padding: 12px 4px;
-    margin: 0;
-  }
-  .note.err {
-    color: var(--del);
-    white-space: pre-wrap;
+  .section-label {
+    padding: var(--s4) var(--s1) var(--s2);
+    flex-shrink: 0;
   }
   .hunk {
+    flex-shrink: 0;
     border: 1px solid var(--line);
-    border-radius: 8px;
-    margin-bottom: 8px;
+    border-radius: var(--radius);
+    margin-bottom: var(--s3);
     overflow: hidden;
     background: var(--bg);
     transition: opacity 150ms var(--ease-out);
@@ -139,30 +125,33 @@
   .hhead {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
+    gap: var(--s3);
+    padding: var(--s1) var(--s3);
     border-bottom: 1px solid var(--line);
-    font-size: 11.5px;
+    font-size: var(--fs-xs);
     min-width: 0;
   }
   .jump {
-    color: var(--amber);
-    font-size: 11px;
+    color: var(--muted);
+    font-size: var(--fs-xs);
     flex-shrink: 0;
   }
   .jump:hover {
+    color: var(--text);
     text-decoration: underline;
   }
   .hlabel {
     flex: 1;
     min-width: 0;
     color: var(--muted);
+    font-size: var(--fs-xs);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .counts {
     flex-shrink: 0;
+    font-size: var(--fs-xs);
   }
   .a {
     color: var(--add);
@@ -172,14 +161,14 @@
   }
   .lines {
     margin: 0;
-    padding: 6px 0;
-    font: 11.5px/1.5 var(--mono);
+    padding: var(--s2) 0;
+    font: var(--fs-xs) / 1.5 var(--mono);
     overflow-x: auto;
     white-space: pre;
   }
   .lines span {
     display: block;
-    padding: 0 8px;
+    padding: 0 var(--s3);
   }
   .lines .add {
     background: var(--add-bg);
@@ -196,29 +185,9 @@
   }
   .hact {
     display: flex;
-    gap: 6px;
+    gap: var(--s2);
     justify-content: flex-end;
-    padding: 6px 8px;
+    padding: var(--s2) var(--s3);
     border-top: 1px solid var(--line);
-  }
-  .hb {
-    font-size: 12px;
-    padding: 2px 10px;
-    border-radius: var(--radius);
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .hb:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--line-strong);
-  }
-  .hb.primary {
-    color: var(--on-accent);
-    background: var(--amber);
-    border-color: var(--amber);
-  }
-  .hb.danger:hover:not(:disabled) {
-    color: var(--del);
-    border-color: var(--del);
   }
 </style>
