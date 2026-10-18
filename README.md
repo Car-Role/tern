@@ -84,16 +84,21 @@ See [Everything Tern does](docs/features.md) for every screen, key, and menu, an
 ## Install
 
 Download the file for your system from the [latest release](https://github.com/Car-Role/tern/releases/latest).
-From version 0.3.0 on, Tern updates itself: it tells you when a new version is ready and installs it on restart.
+From version 0.3.1 on, Tern updates itself: it tells you when a new version is ready and installs it on restart.
 
-| System | File |
+| Your computer | File |
 | --- | --- |
-| Windows (most PCs) | `Tern_<version>_x64-setup.exe`, or the `.msi` |
-| Windows on ARM | `Tern_<version>_arm64-setup.exe` |
-| macOS, Apple Silicon (M1 and later) | `Tern_<version>_aarch64.dmg` |
-| macOS, Intel | `Tern_<version>_x64.dmg` |
-| Linux x64 | `.AppImage`, `.deb` (Debian, Ubuntu), or `.rpm` (Fedora, openSUSE) |
-| Linux ARM64 | The same three formats, marked `arm64` or `aarch64` |
+| **Windows**: most PCs (Intel or AMD processor) | `Tern_<version>_x64-setup.exe` |
+| **Windows on ARM**: Snapdragon PCs, for example Surface Pro X and Copilot+ PCs | `Tern_<version>_arm64-setup.exe` |
+| **Mac with Apple silicon**: M1, M2, M3, M4 (most Macs from 2021 on) | `Tern_<version>_aarch64.dmg` |
+| **Mac with an Intel processor**: most Macs from 2020 and earlier | `Tern_<version>_x64.dmg` |
+| **Linux** (Intel or AMD) | `.AppImage` (any Linux), `.deb` (Ubuntu, Debian), or `.rpm` (Fedora, RHEL) marked `amd64` or `x86_64` |
+| **Linux on ARM** | The same three formats, marked `arm64` or `aarch64` |
+
+Not sure which one? On Windows, **Settings → System → About** shows the **System type** ("x64" or "ARM").
+On a Mac, **Apple menu → About This Mac** shows **Chip: Apple M…** (Apple silicon) or **Processor: Intel**.
+IT teams can use `Tern_<version>_x64_en-US.msi`. Ignore `latest.json` and the `.app.tar.gz` files: installed
+copies of Tern use them to update themselves.
 
 The builds are not code-signed yet, so the first launch needs one extra step:
 
