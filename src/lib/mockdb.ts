@@ -3,10 +3,10 @@
 import type { DbConn, DbQueryResult, DbSchema } from "./types";
 
 let conns: DbConn[] = [
-  { id: "pg", name: "billing (local)", engine: "postgres", file: "", host: "localhost", port: 5432, database: "billing", user: "postgres", tls: "prefer", hasPassword: true, allowWrites: true, color: "#5fbf8b" },
-  { id: "ms", name: "Orders prod replica", engine: "mssql", file: "", host: "sql-prod.example.com", port: 1433, database: "Orders", user: "reader", tls: "require", hasPassword: true, allowWrites: false, color: "#e5786d" },
-  { id: "rd", name: "cache", engine: "redis", file: "", host: "localhost", port: 6379, database: "0", user: "", tls: "off", hasPassword: false, allowWrites: false, color: "" },
-  { id: "lite", name: "app.db", engine: "sqlite", file: "C:\\Users\\you\\Code\\notes-app\\app.db", host: "", port: 0, database: "", user: "", tls: "off", hasPassword: false, allowWrites: false, color: "#6fa8ff" },
+  { id: "pg", name: "billing (local)", engine: "postgres", file: "", host: "localhost", port: 5432, database: "billing", user: "postgres", tls: "prefer", hasPassword: true, allowWrites: true, color: "#5fbf8b", entra: false },
+  { id: "ms", name: "Orders prod replica", engine: "mssql", file: "", host: "sql-prod.example.com", port: 1433, database: "Orders", user: "reader", tls: "require", hasPassword: true, allowWrites: false, color: "#e5786d", entra: false },
+  { id: "rd", name: "cache", engine: "redis", file: "", host: "localhost", port: 6379, database: "0", user: "", tls: "off", hasPassword: false, allowWrites: false, color: "", entra: false },
+  { id: "lite", name: "app.db", engine: "sqlite", file: "C:\\Users\\you\\Code\\notes-app\\app.db", host: "", port: 0, database: "", user: "", tls: "off", hasPassword: false, allowWrites: false, color: "#6fa8ff", entra: false },
 ];
 
 const col = (name: string, kind: string, key = false, nullable = !key) => ({ name, kind, key, nullable });

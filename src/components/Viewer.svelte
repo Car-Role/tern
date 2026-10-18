@@ -462,7 +462,7 @@
   function sqliteConn(repo: string, rel: string): DbConn {
     const sep = repo.includes("\\") ? "\\" : "/";
     const file = repo.replace(/[\\/]+$/, "") + sep + rel.split("/").join(sep);
-    return { id: "file:" + file, name: baseName(rel), engine: "sqlite", file, host: "", port: 0, database: "", user: "", tls: "off", hasPassword: false, allowWrites: false, color: "" };
+    return { id: "file:" + file, name: baseName(rel), engine: "sqlite", file, host: "", port: 0, database: "", user: "", tls: "off", hasPassword: false, allowWrites: false, color: "", entra: false };
   }
   const rk = $derived(v && (v.kind === "file" || v.kind === "diff") ? richKind(v.rel) : null);
   const binary = $derived(isBinaryKind(rk));

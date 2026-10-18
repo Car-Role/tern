@@ -6,6 +6,7 @@
 
 #[cfg(test)]
 mod live_tests;
+mod entra;
 mod mssql;
 mod pg;
 mod redis_db;
@@ -68,6 +69,8 @@ pub struct Conn {
     pub allow_writes: bool,
     /// A color dot, to tell production from development at a glance.
     pub color: String,
+    /// SQL Server: sign in with Microsoft Entra, using a token from the Azure CLI (`az login`).
+    pub entra: bool,
 }
 
 impl Conn {

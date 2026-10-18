@@ -201,13 +201,16 @@ example `bug/4790-grid-loses-sort`), **Copy link**. Keys: `↑` `↓` or `J` `K`
 `Ctrl Shift D`, or **Data** in the sidebar. SQLite, Postgres, SQL Server (and Azure SQL), and Redis.
 
 - **+** adds a connection. **Test** checks it before you save. Passwords go to the system keychain, never to a file.
-  SQL Server: leave the user empty to sign in with your Windows account; write `server\instance` for a named instance.
+  SQL Server: **Sign in with** a SQL login, your Windows account, or **Microsoft Entra**. Entra uses your Azure CLI
+  sign-in (run `az login` once); Tern stores no password, and the server needs a login for you or your group.
+  Write `server\instance` for a named instance.
   A color dot tells production from development.
 - **Read-only by default**, enforced by each database: SQLite opens the file read-only, Postgres refuses writes,
   SQL Server rolls back every batch, and Redis allows only commands that read. To change data, turn on
   **Allow writes** in the connection, then the **Read-only** button in the bar. Tern still asks before a query
   that changes data.
-- Click a table for its first 100 rows, or a Redis key for its value. The editor completes table and column names.
+- Click a table for its first 100 rows, or a Redis key for its value. Postgres marks **foreign** tables: they read a
+  file or another server each time, so they fail when that file is gone (for example an old server log). The editor completes table and column names.
   `Ctrl Enter` runs the query (or only the selected text). Several statements give several results. Results show
   the first 1,000 rows.
 - **History** lists the last 50 queries for the connection. **Copy schema** copies every table for an agent.

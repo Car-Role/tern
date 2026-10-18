@@ -117,6 +117,15 @@ pub async fn schema(c: &mut Client) -> Result<Schema, String> {
     Ok(Schema { version, tables: group(cols.into_iter().take(50_000), &keys), truncated })
 }
 
+/// "BASE TABLE", "VIEW", "FOREIGN" (a table that reads a file or another server) to a short kind.
+fn kind(table_type: &str) -> &'static str {
+    match table_type {
+        t if t.contains("VIEW") => "view",
+        "FOREIGN" => "foreign",
+        _ => "table",
+    }
+}
+
 /// Rows of (schema, table, table type, column, type, nullable) to tables, in order.
 pub fn group(cols: impl Iterator<Item = Vec<String>>, keys: &HashSet<(String, String, String)>) -> Vec<Table> {
     let mut order = Vec::new();
@@ -125,7 +134,7 @@ pub fn group(cols: impl Iterator<Item = Vec<String>>, keys: &HashSet<(String, St
         let k = (r[0].clone(), r[1].clone());
         let t = by.entry(k.clone()).or_insert_with(|| {
             order.push(k.clone());
-            Table { schema: r[0].clone(), name: r[1].clone(), kind: if r[2].contains("VIEW") { "view".into() } else { "table".into() }, columns: vec![] }
+            Table { schema: r[0].clone(), name: r[1].clone(), kind: kind(&r[2]).into(), columns: vec![] }
         });
         t.columns.push(Column {
             key: keys.contains(&(r[0].clone(), r[1].clone(), r[3].clone())),

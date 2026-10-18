@@ -8,7 +8,7 @@
   let { conn, onclose }: { conn: DbConn | null; onclose: () => void } = $props();
 
   const COLORS = ["", "#5fbf8b", "#6fa8ff", "#f0b54a", "#e5786d", "#b48cf2"];
-  const blank: DbConn = { id: "", name: "", engine: "postgres", file: "", host: "localhost", port: 5432, database: "", user: "", tls: "prefer", hasPassword: false, allowWrites: false, color: "" };
+  const blank: DbConn = { id: "", name: "", engine: "postgres", file: "", host: "localhost", port: 5432, database: "", user: "", tls: "prefer", hasPassword: false, allowWrites: false, color: "", entra: false };
   // The form edits a copy, taken once when it opens.
   let f = $state<DbConn>(untrack(() => (conn ? { ...conn } : { ...blank })));
   let password = $state("");
@@ -17,12 +17,30 @@
   let saving = $state(false);
   let result = $state<{ ok: boolean; text: string } | null>(null);
   let first: HTMLInputElement | undefined = $state();
+  // SQL Server only. "windows" is an empty user name; "entra" uses a token from az login.
+  let signin = $state<"sql" | "windows" | "entra">(untrack(() => (f.entra ? "entra" : conn && !conn.user ? "windows" : "sql")));
+  const showLogin = $derived(f.engine !== "mssql" || signin === "sql");
+
+  function pickSignin(s: typeof signin) {
+    signin = s;
+    f.entra = s === "entra";
+    if (s !== "sql") {
+      f.user = "";
+      password = "";
+      if (f.hasPassword) clearPassword = true;
+    } else {
+      clearPassword = false;
+    }
+    result = null;
+  }
 
   onMount(() => first?.focus());
 
   function pickEngine(e: DbEngine) {
     if (f.port === 0 || f.port === defaultPort[f.engine]) f.port = defaultPort[e];
     if (e === "redis" && f.tls === "prefer") f.tls = "off";
+    if (e !== "mssql") f.entra = false;
+    else if (signin === "entra") f.entra = true;
     f.engine = e;
     result = null;
   }
@@ -126,17 +144,32 @@
           </div>
           <label for="dbf-db">{f.engine === "redis" ? "Database number" : "Database"}</label>
           <input id="dbf-db" class="field mono" bind:value={f.database} placeholder={f.engine === "redis" ? "0" : f.engine === "mssql" ? "master" : "postgres"} spellcheck="false" />
-          <label for="dbf-user">User</label>
-          <input id="dbf-user" class="field mono" bind:value={f.user} spellcheck="false" autocomplete="off"
-            placeholder={f.engine === "mssql" ? "Empty: sign in with your Windows account" : f.engine === "redis" ? "Empty for the default user" : "postgres"} />
-          <label for="dbf-pw">Password</label>
-          <div class="row">
-            <input id="dbf-pw" class="field" type="password" bind:value={password} autocomplete="new-password"
-              placeholder={f.hasPassword && !clearPassword ? "Saved in the system keychain. Type to replace it." : ""} />
-            {#if f.hasPassword && !password}
-              <label class="check"><input type="checkbox" bind:checked={clearPassword} /> Remove</label>
+          {#if f.engine === "mssql"}
+            <span class="lbl" id="dbf-signin">Sign in with</span>
+            <div class="seg signin" role="group" aria-labelledby="dbf-signin">
+              <button class:on={signin === "sql"} aria-pressed={signin === "sql"} onclick={() => pickSignin("sql")}>SQL login</button>
+              <button class:on={signin === "windows"} aria-pressed={signin === "windows"} onclick={() => pickSignin("windows")}>Windows</button>
+              <button class:on={signin === "entra"} aria-pressed={signin === "entra"} onclick={() => pickSignin("entra")}>Microsoft Entra</button>
+            </div>
+            {#if signin === "windows"}
+              <span></span><p class="hint faint">Uses the Windows account you are signed in with. The server must trust your computer's domain.</p>
+            {:else if signin === "entra"}
+              <span></span><p class="hint faint">Uses your Azure CLI sign-in. Run <code>az login</code> once in a terminal. Tern asks it for a token and stores no password. The server must have a login for your account or one of your groups.</p>
             {/if}
-          </div>
+          {/if}
+          {#if showLogin}
+            <label for="dbf-user">User</label>
+            <input id="dbf-user" class="field mono" bind:value={f.user} spellcheck="false" autocomplete="off"
+              placeholder={f.engine === "mssql" ? "sa" : f.engine === "redis" ? "Empty for the default user" : "postgres"} />
+            <label for="dbf-pw">Password</label>
+            <div class="row">
+              <input id="dbf-pw" class="field" type="password" bind:value={password} autocomplete="new-password"
+                placeholder={f.hasPassword && !clearPassword ? "Saved in the system keychain. Type to replace it." : ""} />
+              {#if f.hasPassword && !password}
+                <label class="check"><input type="checkbox" bind:checked={clearPassword} /> Remove</label>
+              {/if}
+            </div>
+          {/if}
           <label for="dbf-tls">Encryption</label>
           <select id="dbf-tls" class="field" bind:value={f.tls}>
             {#each Object.entries(tlsLabels) as [v, l]}
@@ -177,9 +210,19 @@
     gap: var(--s3) var(--s4);
     align-items: center;
   }
-  .form > label:not(.check) {
+  .form > label:not(.check),
+  .form > .lbl {
     color: var(--muted);
     font-size: var(--fs-sm);
+  }
+  .signin {
+    justify-self: start;
+  }
+  .hint {
+    margin: calc(var(--s2) * -1) 0 0;
+    font-size: var(--fs-sm);
+    line-height: 1.45;
+    text-wrap: pretty;
   }
   .row {
     display: flex;

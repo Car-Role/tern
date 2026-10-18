@@ -336,6 +336,8 @@ export interface DbConn {
   hasPassword: boolean;
   allowWrites: boolean;
   color: string;
+  /** SQL Server: sign in with Microsoft Entra, using a token from the Azure CLI (az login). */
+  entra: boolean;
 }
 
 export interface DbColumn {
@@ -348,7 +350,7 @@ export interface DbColumn {
 export interface DbTable {
   schema: string;
   name: string;
-  /** "table" or "view"; for Redis, the key type. */
+  /** "table", "view", or "foreign" (reads a server file or another server); for Redis, the key type. */
   kind: string;
   columns: DbColumn[];
 }

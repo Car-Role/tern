@@ -10,7 +10,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 pub type Client = tiberius::Client<Compat<TcpStream>>;
 
-fn config(conn: &Conn, password: &str, host: &str, port: u16) -> Config {
+fn config(conn: &Conn, password: &str, token: Option<&str>, host: &str, port: u16) -> Config {
     let mut cfg = Config::new();
     // "server\instance" names an instance; the SQL Server Browser service gives its port.
     let (h, instance) = match host.split_once('\\') {
@@ -27,7 +27,9 @@ fn config(conn: &Conn, password: &str, host: &str, port: u16) -> Config {
         cfg.database(&conn.database);
     }
     cfg.application_name("Tern");
-    if conn.user.is_empty() {
+    if let Some(t) = token {
+        cfg.authentication(AuthMethod::aad_token(t));
+    } else if conn.user.is_empty() {
         #[cfg(windows)]
         cfg.authentication(AuthMethod::Integrated);
         #[cfg(not(windows))]
@@ -36,6 +38,11 @@ fn config(conn: &Conn, password: &str, host: &str, port: u16) -> Config {
         cfg.authentication(AuthMethod::sql_server(&conn.user, password));
     }
     match conn.tls {
+        // Entra tokens must travel encrypted, so "Off" and "Prefer" still encrypt (without a certificate check).
+        Tls::Off | Tls::Prefer if token.is_some() => {
+            cfg.encryption(EncryptionLevel::Required);
+            cfg.trust_cert();
+        }
         Tls::Off => cfg.encryption(EncryptionLevel::NotSupported),
         // Only the login is encrypted, and local servers use self-signed certificates: do not check it.
         Tls::Prefer => {
@@ -54,9 +61,10 @@ fn config(conn: &Conn, password: &str, host: &str, port: u16) -> Config {
 pub async fn connect(conn: &Conn, password: &str) -> Result<Client, String> {
     let mut host = conn.host.clone();
     let mut port = conn.port;
+    let token = if conn.entra { Some(super::entra::token().await?) } else { None };
     // Azure SQL may send the client to another server once (a "routing" answer).
     for _ in 0..2 {
-        let cfg = config(conn, password, &host, port);
+        let cfg = config(conn, password, token.as_deref(), &host, port);
         let tcp = if host.contains('\\') {
             TcpStream::connect_named(&cfg).await.map_err(|e| format!("{}: {e}", conn.host))?
         } else {
@@ -69,7 +77,18 @@ pub async fn connect(conn: &Conn, password: &str) -> Result<Client, String> {
                 host = h;
                 port = p;
             }
-            Err(e) => return Err(describe(e)),
+            Err(e) => {
+                let msg = describe(e);
+                if token.is_some() {
+                    super::entra::forget();
+                    if msg.contains("Login failed for user ''") || msg.contains("token-identified principal") {
+                        return Err(format!("{msg}
+
+The server accepted the connection but refused your Entra account. An admin must add it, or a group you are in, as a login on this server (CREATE LOGIN [name] FROM EXTERNAL PROVIDER) and as a user in the database. Being in an Entra group is not enough by itself."));
+                    }
+                }
+                return Err(msg);
+            }
         }
     }
     Err("SQL Server sent Tern to another server twice. Check the host name.".into())

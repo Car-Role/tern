@@ -410,7 +410,7 @@
                     <span class="chev"></span>
                   {/if}
                   <button class="tname" onclick={() => openTable(t)} oncontextmenu={(e) => tableMenu(e, t)} title={conn.engine === "redis" ? `${t.name} (${t.kind})` : `Show the first 100 rows of ${t.name}`}>
-                    <span class="kind k-{t.kind}">{conn.engine === "redis" ? (redisKind[t.kind] ?? t.kind.slice(0, 4)) : t.kind === "view" ? "view" : ""}</span>{conn.engine === "redis" && t.schema ? t.name.slice(t.schema.length + 1) || t.name : t.name}
+                    <span class="kind k-{t.kind}">{conn.engine === "redis" ? (redisKind[t.kind] ?? t.kind.slice(0, 4)) : t.kind === "view" || t.kind === "foreign" ? t.kind : ""}</span>{conn.engine === "redis" && t.schema ? t.name.slice(t.schema.length + 1) || t.name : t.name}
                   </button>
                 </div>
                 {#if topen}
