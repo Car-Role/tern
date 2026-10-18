@@ -125,6 +125,11 @@ export const api = {
   readText: (repo: string, rel: string, max: number) => call<BigText>("read_text", { repo, rel, max }),
   /** The new end of a growing file. Offset 0 starts over with the last `max` bytes. */
   readTail: (repo: string, rel: string, offset: number, max: number) => call<Tail>("read_tail", { repo, rel, offset, max }),
+  /** Facts about this computer and the tools Tern runs, for a bug report. */
+  diagFacts: () => call<{ os: string; arch: string; webview: string; tools: [string, string][]; logDir: string }>("diag_facts"),
+  logAppend: (level: string, message: string) => call<void>("log_append", { level, message }),
+  logTail: (lines: number) => call<string[]>("log_tail", { lines }),
+  openLogDir: () => call<void>("open_log_dir"),
   dbList: () => call<DbConn[]>("db_list"),
   /** `password`: null keeps the saved one, "" removes it. */
   dbSave: (conn: DbConn, password: string | null) => call<DbConn>("db_save", { conn, password }),

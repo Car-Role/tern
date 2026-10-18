@@ -3,6 +3,7 @@ mod ci;
 mod clone;
 mod config;
 mod db;
+mod diag;
 mod git;
 mod hunks;
 mod media;
@@ -327,6 +328,37 @@ async fn file_bytes(repo: String, rel: String, rev: Option<String>) -> Res<media
 #[tauri::command]
 async fn read_text(repo: String, rel: String, max: u64) -> Res<media::BigText> {
     blocking(move || media::read_text(&repo, &rel, max)).await
+}
+
+// ---- Diagnostics ----
+
+/// Facts about this computer and the tools Tern runs, for a bug report.
+#[tauri::command]
+async fn diag_facts() -> Res<diag::Facts> {
+    let webview = tauri::webview_version().unwrap_or_else(|e| format!("unknown ({e})"));
+    blocking(move || Ok(diag::facts(webview))).await
+}
+
+/// Adds a line to Tern's log file.
+#[tauri::command]
+fn log_append(level: String, message: String) {
+    diag::append(&level, &message);
+}
+
+/// The last lines of Tern's log file.
+#[tauri::command]
+fn log_tail(lines: usize) -> Vec<String> {
+    diag::tail(lines.min(2000))
+}
+
+/// Shows the log file in the file manager.
+#[tauri::command]
+fn open_log_dir(app: tauri::AppHandle) -> Res<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = diag::log_dir().ok_or("Tern has no log folder yet.")?;
+    let file = dir.join("tern.log");
+    let target = if file.exists() { file } else { dir };
+    app.opener().reveal_item_in_dir(target).map_err(|e| e.to_string())
 }
 
 // ---- Database tool ----
@@ -716,6 +748,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
+            // Errors and crashes go to a small log file, for bug reports ("Copy diagnostics").
+            if let Ok(dir) = app.path().app_log_dir() {
+                diag::set_log_dir(dir);
+            }
+            diag::log_panics();
+            diag::append("info", &format!("Tern {} started", app.package_info().version));
             let config = config::load(&config_dir);
             let cwd = std::env::current_dir().unwrap_or_default();
             let opened = Mutex::new(file_args(std::env::args().skip(1), &cwd));
@@ -753,6 +791,10 @@ pub fn run() {
             file_bytes,
             read_text,
             read_tail,
+            diag_facts,
+            log_append,
+            log_tail,
+            open_log_dir,
             db_list,
             db_save,
             db_remove,

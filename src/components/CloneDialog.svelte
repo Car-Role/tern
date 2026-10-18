@@ -22,14 +22,14 @@
 
   const saved = (k: string, d: string) => {
     try {
-      return localStorage.getItem("scout.clone." + k) ?? d;
+      return localStorage.getItem("tern.clone." + k) ?? d;
     } catch {
       return d;
     }
   };
   const remember = (k: string, v: string) => {
     try {
-      localStorage.setItem("scout.clone." + k, v);
+      localStorage.setItem("tern.clone." + k, v);
     } catch {}
   };
 

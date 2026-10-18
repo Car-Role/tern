@@ -44,14 +44,14 @@
   const store = {
     get: (k: string) => {
       try {
-        return localStorage.getItem("scout." + k);
+        return localStorage.getItem("tern." + k);
       } catch {
         return null;
       }
     },
     set: (k: string, v: string) => {
       try {
-        localStorage.setItem("scout." + k, v);
+        localStorage.setItem("tern." + k, v);
       } catch {}
     },
   };

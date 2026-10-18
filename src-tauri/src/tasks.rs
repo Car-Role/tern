@@ -339,11 +339,11 @@ pub fn discover(repo: &str, custom: &[CustomTask]) -> Vec<Task> {
 mod tests {
     use super::*;
 
-    /// Prints what Tern finds in real repos: `SCOUT_REPOS="C:\a;C:\b" cargo test print_real -- --ignored --nocapture`
+    /// Prints what Tern finds in real repos: `TERN_REPOS="C:\a;C:\b" cargo test print_real -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn print_real() {
-        for repo in std::env::var("SCOUT_REPOS").unwrap_or_default().split(';').filter(|r| !r.is_empty()) {
+        for repo in std::env::var("TERN_REPOS").unwrap_or_default().split(';').filter(|r| !r.is_empty()) {
             println!("== {repo}");
             for t in discover(repo, &[]) {
                 println!("  [{}] {:<28} cwd={:<8} {}", t.source, t.name, t.cwd, t.command);

@@ -34,14 +34,14 @@
 
   const load = <T,>(k: string, d: T): T => {
     try {
-      return JSON.parse(localStorage.getItem("scout.search." + k) ?? "") as T;
+      return JSON.parse(localStorage.getItem("tern.search." + k) ?? "") as T;
     } catch {
       return d;
     }
   };
   const keep = (k: string, v: unknown) => {
     try {
-      localStorage.setItem("scout.search." + k, JSON.stringify(v));
+      localStorage.setItem("tern.search." + k, JSON.stringify(v));
     } catch {}
   };
 

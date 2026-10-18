@@ -242,6 +242,67 @@
   const COMMIT_ROW = 42;
   const FOLD_ROW = 30;
 
+  // Long lists (thousands of changes, files, or commits) draw only the rows near the screen.
+  // Heights start as a guess per row type and are replaced by the real height once a row is drawn.
+  const VIRTUAL_MIN = 200;
+  const OVERSCAN = 600;
+  let padEl: HTMLDivElement | undefined = $state();
+  let listTop = $state(0);
+  let listH = $state(600);
+  const measured = new Map<string, number>();
+  let measureTick = $state(0);
+  const guess = (r: Row) =>
+    r.type === "header" ? 32
+    : r.type === "commit" ? COMMIT_ROW
+    : r.type === "fold" ? FOLD_ROW
+    : r.type === "pr" || r.type === "issue" || r.type === "run" || r.type === "stash" ? 50
+    : r.type === "task" ? 44
+    : 28;
+  const virtual = $derived(rows.length > VIRTUAL_MIN);
+  /** offsets[i] is where row i starts, from the first row; offsets[rows.length] is the total height. */
+  const offsets = $derived.by(() => {
+    void measureTick;
+    const o = new Array<number>(rows.length + 1);
+    o[0] = 0;
+    for (let i = 0; i < rows.length; i++) o[i + 1] = o[i] + (measured.get(rows[i].id) ?? guess(rows[i]));
+    return o;
+  });
+  /** The rows to draw: all of them for short lists, else the ones near the screen. */
+  const win = $derived.by(() => {
+    if (!virtual) return { start: 0, end: rows.length };
+    const base = padEl?.offsetTop ?? 0;
+    const from = listTop - base - OVERSCAN;
+    const to = listTop - base + listH + OVERSCAN;
+    // Binary search for the first row that ends below `from`.
+    let lo = 0, hi = rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (offsets[mid + 1] <= from) lo = mid + 1;
+      else hi = mid;
+    }
+    let end = lo;
+    while (end < rows.length && offsets[end] < to) end++;
+    return { start: lo, end: Math.max(end, Math.min(rows.length, lo + 1)) };
+  });
+  // After drawing, remember the real height of each drawn row (headers include their top margin).
+  $effect(() => {
+    void win;
+    if (!virtual || !listEl) return;
+    tick().then(() => {
+      let changed = false;
+      for (const el of listEl?.querySelectorAll<HTMLElement>(".row[data-i]") ?? []) {
+        const r = rows[Number(el.dataset.i)];
+        if (!r) continue;
+        const h = el.offsetHeight + (r.type === "header" ? parseFloat(getComputedStyle(el).marginTop) || 0 : 0);
+        if (h && measured.get(r.id) !== h) {
+          measured.set(r.id, h);
+          changed = true;
+        }
+      }
+      if (changed) measureTick++;
+    });
+  });
+
   const kindText: Record<string, string> = {
     added: "Added", modified: "Changed", deleted: "Deleted", renamed: "Renamed", untracked: "New file, not tracked yet",
     conflict: "Merge conflict", copied: "Copied", typechange: "Type changed",
@@ -425,7 +486,16 @@
     anchor = cursor;
     if (preview) activate(rows[cursor], true);
     await tick();
-    listEl?.querySelector(`[data-i="${cursor}"]`)?.scrollIntoView({ block: "nearest" });
+    scrollToRow(cursor);
+  }
+
+  /** Brings a row into view, even when a long list has not drawn it yet. */
+  function scrollToRow(i: number) {
+    const el = listEl?.querySelector(`[data-i="${i}"]`);
+    if (el) return el.scrollIntoView({ block: "nearest" });
+    if (!listEl || !virtual) return;
+    const top = (padEl?.offsetTop ?? 0) + offsets[i];
+    listEl.scrollTop = Math.max(0, top - listH / 2);
   }
 
   function click(e: MouseEvent, i: number) {
@@ -932,7 +1002,8 @@
   {/if}
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="list" class:kbd bind:this={listEl} tabindex="0" onkeydown={onKey} onmousedown={() => (kbd = false)} role="listbox" aria-label="Items">
+  <div class="list" class:kbd bind:this={listEl} bind:clientHeight={listH} tabindex="0" onkeydown={onKey} onmousedown={() => (kbd = false)}
+    onscroll={() => (listTop = listEl?.scrollTop ?? 0)} role="listbox" aria-label="Items">
     {#if noMatch}
       <div class="state">
         <div class="state-title">Nothing matches</div>
@@ -1009,7 +1080,10 @@
       </div>
     {/if}
 
-    {#each rows as r, i (r.id)}
+    <!-- Long lists draw only the rows near the screen; spacers stand in for the rest. -->
+    {#if virtual}<div class="vpad" bind:this={padEl} style:height="{offsets[win.start]}px"></div>{/if}
+    {#each rows.slice(win.start, win.end) as r, j (r.id)}
+      {@const i = win.start + j}
       {@const path = rowPath(r)}
       <div
         class="row {r.type}"
@@ -1217,6 +1291,7 @@
         {/if}
       </div>
     {/each}
+    {#if virtual}<div class="vpad" style:height="{offsets[rows.length] - offsets[win.end]}px"></div>{/if}
   </div>
 
   {#if app.tab === "changes" && !reviewing && s && (s.changes.length || app.canAmend(repo))}
@@ -1511,6 +1586,7 @@
 
   /* The list */
   .list {
+    position: relative;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -1559,8 +1635,12 @@
   .row.header:hover {
     background: none;
   }
-  .row.header:first-child {
+  .row.header:first-child,
+  .vpad:first-child + .row.header {
     margin-top: 0;
+  }
+  .vpad {
+    flex-shrink: 0;
   }
   .hlabel {
     font-size: var(--fs-xs);

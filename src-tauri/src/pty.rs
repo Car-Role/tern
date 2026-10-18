@@ -156,7 +156,7 @@ mod tests {
         let mut seen = String::new();
         let mut sent = false;
         let until = Instant::now() + Duration::from_secs(30);
-        while Instant::now() < until && !seen.contains("scout-42") {
+        while Instant::now() < until && !seen.contains("tern-42") {
             if let Ok(d) = rx.recv_timeout(Duration::from_millis(200)) {
                 // ConPTY asks where the cursor is and waits for the answer. xterm.js answers in the app.
                 if d.contains("\x1b[6n") {
@@ -165,11 +165,11 @@ mod tests {
                 seen.push_str(&d);
             }
             if !sent && seen.len() > 8 {
-                terms.write(opened.id, "Write-Output \"scout-$(6*7)\"\r").unwrap();
+                terms.write(opened.id, "Write-Output \"tern-$(6*7)\"\r").unwrap();
                 sent = true;
             }
         }
-        assert!(seen.contains("scout-42"), "shell output was: {seen}");
+        assert!(seen.contains("tern-42"), "shell output was: {seen}");
         terms.close(opened.id);
         assert!(erx.recv_timeout(Duration::from_secs(10)).is_ok(), "shell did not exit after close");
     }

@@ -174,6 +174,8 @@ export const commands: Cmd[] = [
   },
   { id: "view.sidebar", group: "View", label: "Show or hide the sidebar", keys: "Ctrl+\\", run: () => app.toggleSidebar() },
   { id: "view.notices", group: "View", label: "Show notifications", run: () => app.toggleNotices() },
+  { id: "help.diagnostics", group: "View", label: "Copy diagnostics for a bug report", run: () => app.copyDiagnostics() },
+  { id: "help.logs", group: "View", label: "Show the log folder", run: () => app.openLogFolder() },
   { id: "view.help", group: "View", label: "Keyboard shortcuts", keys: "F1", run: () => (app.overlay = "help") },
   { id: "view.theme", group: "View", label: "Choose a theme…", run: () => (app.overlay = "settings") },
   { id: "view.settings", group: "View", label: "Settings", keys: "Ctrl+,", run: () => (app.overlay = "settings") },

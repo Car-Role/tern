@@ -119,10 +119,23 @@ const commits = [
   commit(10, "First commit", []),
 ];
 
+const stress = (() => {
+  try {
+    return localStorage.getItem("tern.stressTest") === "1";
+  } catch {
+    return false;
+  }
+})();
+const bigChanges: Change[] = Array.from({ length: 5000 }, (_, i) => ({
+  path: `src/generated/part-${String(Math.floor(i / 100)).padStart(2, "0")}/file-${i}.ts`, oldPath: null,
+  kind: i % 7 === 0 ? "untracked" : "modified", staged: i % 5 === 0, unstaged: i % 5 !== 0, mtime: now - i,
+}));
+
 function summary(r: RepoEntry, i: number): Summary {
   const dirty = i % 2 === 0;
   const azdo = r.path.startsWith("C:\\Work");
-  const mine = dirty ? (i === 0 ? changes : changes.slice(0, Math.max(1, 5 - i))) : [];
+  // Stress test (localStorage "tern.stressTest" = "1"): storefront-web gets 5,000 changed files and 3,000 commits.
+  const mine = stress && r.name === "storefront-web" ? bigChanges : dirty ? (i === 0 ? changes : changes.slice(0, Math.max(1, 5 - i))) : [];
   return {
     path: r.path,
     branch: r.parent ? "claude/fix-sync" : i === 3 ? "feature/anchors" : "main",
@@ -215,6 +228,9 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function mock(cmd: string, args: Record<string, any>): Promise<unknown> {
   await wait(cmd === "prepare_pr" || cmd === "list_prs" ? 400 : 30);
   if (cmd.startsWith("db_")) return mockDb(cmd, args);
+  if (cmd === "diag_facts") return { os: "Microsoft Windows [Version 10.0.26200]", arch: "x86_64", webview: "141.0", tools: [["git", "git version 2.51.0"], ["gh", "gh version 2.80.0"], ["az", "azure-cli 2.77.0"], ["VS Code", "1.105.0"]], logDir: "C:\Users\you\AppData\Local\com.carl.scout\logs" };
+  if (cmd === "log_append" || cmd === "open_log_dir") return null;
+  if (cmd === "log_tail") return ["2026-10-17 18:04:05 INFO  Tern 0.4.0 started"];
   switch (cmd) {
     case "get_config": return config;
     case "set_config": config = args.config; return null;
@@ -249,6 +265,14 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     case "rev_diff": return { old: text(oldText), new: text(newText) };
     case "commit_files": return { base: "b", head: args.sha, files: changes.slice(0, 3) };
     case "log": {
+      if (stress && String(args.repo).endsWith("storefront-web")) {
+        const big = Array.from({ length: 3000 }, (_, i) => {
+          const sha = shaOf(1000 + i);
+          return { sha, short: sha.slice(0, 7), subject: `Change number ${3000 - i}`, author: i % 3 ? "Sam Lee" : "Ada Park", email: "o@example.com",
+            time: now - i * 900, refs: i === 0 ? "HEAD -> main, origin/main" : "", parents: i < 2999 ? [shaOf(1001 + i)] : [], body: "" };
+        });
+        return { commits: big, branch: "main", upstream: "origin/main", upstreamSha: big[0].sha, base: big[0].sha, behind: 0, ahead: 0, incoming: [], outgoing: [] };
+      }
       // 15 new commits on origin/main that a pull would bring, above the local main.
       const up = Array.from({ length: 15 }, (_, i) => {
         const sha = shaOf(100 + i);

@@ -107,8 +107,8 @@
   /** Another screen can ask Settings to open on a section by setting this key just before opening it. */
   function initialSection(): SectionId {
     try {
-      const want = localStorage.getItem("scout.settingsSection");
-      localStorage.removeItem("scout.settingsSection");
+      const want = localStorage.getItem("tern.settingsSection");
+      localStorage.removeItem("tern.settingsSection");
       const hit = sections.find((x) => x.id === want);
       if (hit) return hit.id;
     } catch {
@@ -373,9 +373,17 @@
               <button class="link" onclick={() => openUrl("https://car-role.github.io/tern/")}>Website</button>
               <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/releases")}>What's new</button>
               <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/docs/guide.md")}>Guide</button>
-              <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/issues/new")}>Report a problem</button>
+              <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/issues/new?template=bug.yml")}>Report a problem</button>
               <button class="link" onclick={() => openUrl("https://github.com/Car-Role/tern/blob/main/LICENSE")}>License</button>
             </p>
+          </section>
+          <section>
+            <h3>Problems</h3>
+            <p class="hint">Something went wrong? Copy the diagnostics and paste them into your bug report. They hold versions, counts, recent errors, and the end of Tern's log. Check them for anything private before you share them.</p>
+            <div class="diag">
+              <button class="btn" onclick={() => app.copyDiagnostics()}>Copy diagnostics</button>
+              <button class="btn ghost" onclick={() => app.openLogFolder()}>Show the log folder</button>
+            </div>
           </section>
         {:else}
           <section>
@@ -409,6 +417,10 @@
 </div>
 
 <style>
+  .diag {
+    display: flex;
+    gap: var(--s3);
+  }
   .settings {
     height: min(680px, calc(88vh - var(--s5)));
     user-select: text;

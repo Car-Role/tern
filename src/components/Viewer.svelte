@@ -42,7 +42,7 @@
   const language = new Compartment();
   /** Long lines wrap or scroll sideways. One switch for the file view and both diff layouts. */
   const wrapping = new Compartment();
-  const WRAP_KEY = "scout.wrap";
+  const WRAP_KEY = "tern.wrap";
   let wrap = $state(readWrap());
   function readWrap() {
     try {

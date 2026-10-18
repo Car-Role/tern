@@ -185,7 +185,7 @@
   // The list and detail split: drag the line between them. Remembered across restarts.
   const W_MIN = 280;
   const W_MAX = 560;
-  const W_KEY = "scout.ticketsW";
+  const W_KEY = "tern.ticketsW";
   const clampW = (n: number) => Math.max(W_MIN, Math.min(W_MAX, n));
   let listW = $state(
     (() => {

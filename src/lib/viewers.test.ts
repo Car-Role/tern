@@ -183,3 +183,29 @@ describe("logs", () => {
     expect(ms).toBeLessThan(3000);
   });
 });
+
+import { migrateStorage } from "./migrate";
+
+describe("saved settings migration", () => {
+  it("moves scout.* to tern.* once, keeping newer values", () => {
+    const m = new Map<string, string>();
+    const store = {
+      get length() { return m.size; },
+      key: (i: number) => [...m.keys()][i] ?? null,
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+      clear: () => m.clear(),
+    } as Storage;
+    store.setItem("scout.tab", "history");
+    store.setItem("scout.railW", "300");
+    store.setItem("tern.railW", "280");
+    store.setItem("theme", "ink");
+    expect(migrateStorage(store)).toBe(2);
+    expect(store.getItem("tern.tab")).toBe("history");
+    expect(store.getItem("tern.railW")).toBe("280");
+    expect(store.getItem("scout.tab")).toBeNull();
+    expect(store.getItem("theme")).toBe("ink");
+    expect(migrateStorage(store)).toBe(0);
+  });
+});

@@ -1,0 +1,27 @@
+name: Bug report
+description: Something in Tern does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Tern did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it
+      placeholder: |
+        1. Open a project with …
+        2. Click …
+        3. See …
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: In Tern, open Settings › Updates › Copy diagnostics (or run "Copy diagnostics" from Ctrl Shift P), then paste here. Check it for anything private first.
+      render: text
+    validations:
+      required: true

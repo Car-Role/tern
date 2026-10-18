@@ -1,3 +1,5 @@
+// First: move old saved settings to their new names, before the store reads them.
+import "./lib/migrate";
 import { mount } from "svelte";
 import "./app.css";
 import App from "./App.svelte";

@@ -40,7 +40,7 @@
   // Space groups can be folded (All spaces view). Remembered on this computer.
   const loadFolded = () => {
     try {
-      return JSON.parse(localStorage.getItem("scout.foldedGroups") ?? "[]") as string[];
+      return JSON.parse(localStorage.getItem("tern.foldedGroups") ?? "[]") as string[];
     } catch {
       return [];
     }
@@ -49,7 +49,7 @@
   function toggleGroup(id: string) {
     folded = folded.includes(id) ? folded.filter((x) => x !== id) : [...folded, id];
     try {
-      localStorage.setItem("scout.foldedGroups", JSON.stringify(folded));
+      localStorage.setItem("tern.foldedGroups", JSON.stringify(folded));
     } catch {}
   }
 

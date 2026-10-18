@@ -22,6 +22,7 @@ Contents:
 [Spaces](#spaces) ·
 [Notifications and undo](#notifications-and-undo) ·
 [Settings](#settings) ·
+[Problems and bug reports](#problems-and-bug-reports) ·
 [Updates](#updates) ·
 [Keyboard reference](#keyboard-reference) ·
 [Right-click menus](#right-click-menus) ·
@@ -290,6 +291,14 @@ High contrast), **Spaces** (rules, colors, tabs), **Folders** (folders to scan a
 **Browse…**), **Projects** (hidden and pinned), **Updates** (version and links), **Advanced** (scan depth and
 refresh interval). Changes need **Save** (`Ctrl S`). A theme you pick shows at once as a preview; Cancel puts the old one back. Closing with unsaved changes asks first.
 
+## Problems and bug reports
+
+**Copy diagnostics** (Settings › Updates, or "Copy diagnostics" in `Ctrl Shift P`) copies a report for a bug:
+Tern's version, the system, the window engine, the git, gh, az, and VS Code versions, project counts, recent
+errors, and the end of Tern's log. Check it for anything private before you share it. **Show the log folder**
+opens the folder with `tern.log`. Tern writes errors and crashes there; the log starts over at 1 MB and keeps
+one older copy. "Report a problem" opens a bug form that asks for the diagnostics.
+
 ## Updates
 
 Tern checks for a new version a little after it starts and every 6 hours. The status bar shows **Restart to
@@ -409,5 +418,6 @@ editor (`Ctrl Enter`).
 - **Settings file**: folders, single projects, hidden and pinned projects, spaces, saved tasks and pins, scan depth,
   refresh interval. Settings shows its path at the bottom.
 - **Database connections**: `databases.json` next to the settings file. Passwords are in the system keychain.
-- **On this computer only** (browser storage): theme, layout widths, the open project and tab, diff layout,
+- **Log**: `tern.log` in Tern's log folder (Settings › Updates › Show the log folder).
+- **On this computer only** (browser storage, names start with `tern.`): theme, layout widths, the open project and tab, diff layout,
   page-view choice, search options and saved sets, query text and history, and other view choices.

@@ -123,14 +123,14 @@ type PrState = { loading: boolean; error: string | null; items: PullRequest[] };
 
 const saved = (key: string) => {
   try {
-    return localStorage.getItem("scout." + key);
+    return localStorage.getItem("tern." + key);
   } catch {
     return null;
   }
 };
 const save = (key: string, value: string) => {
   try {
-    localStorage.setItem("scout." + key, value);
+    localStorage.setItem("tern." + key, value);
   } catch {
     /* storage can be blocked; the app works without it */
   }
@@ -410,6 +410,7 @@ class Store {
   private pollTimer: ReturnType<typeof setInterval> | undefined;
 
   async init() {
+    this.catchErrors();
     try {
       this.config = await api.getConfig();
       await this.reloadRepos(true);
@@ -2532,6 +2533,56 @@ class Store {
     this.toast = { text, kind, id };
     this.toastTimer = setTimeout(() => (this.toast = null), kind === "err" ? 7000 : 2600);
     this.notices = [{ id, text, kind, at: Date.now(), repo: this.current }, ...this.notices].slice(0, 200);
+    if (kind === "err") this.log("error", text);
+  }
+
+  /** Writes a line to Tern's log file (for bug reports). Never throws. */
+  log(level: "error" | "warn" | "info", message: string) {
+    api.logAppend(level, message).catch(() => {});
+  }
+
+  /** Script errors and failed promises go to the log, so "Copy diagnostics" can show them. */
+  private catchErrors() {
+    window.addEventListener("error", (e) => this.log("error", `script: ${e.message} at ${e.filename}:${e.lineno}`));
+    window.addEventListener("unhandledrejection", (e) => this.log("error", `promise: ${String(e.reason?.stack ?? e.reason)}`.slice(0, 2000)));
+  }
+
+  /** A report for a bug: versions, this computer, tools, counts, recent errors, and the end of the log. */
+  async copyDiagnostics() {
+    try {
+      const [facts, tail] = await Promise.all([api.diagFacts(), api.logTail(80)]);
+      const errors = this.notices.filter((n) => n.kind === "err").slice(0, 15);
+      const lines = [
+        `Tern ${this.version ?? "?"} diagnostics`,
+        "",
+        `OS: ${facts.os} (${facts.arch})`,
+        `WebView: ${facts.webview}`,
+        ...facts.tools.map(([name, v]) => `${name}: ${v.replace(/\s+/g, " ").trim() || "not found"}`),
+        `Theme: ${this.theme} · window ${window.innerWidth}x${window.innerHeight} · zoom ${Math.round(devicePixelRatio * 100)}%`,
+        `Projects: ${this.repos.length} found, ${this.visible.length} in view, ${this.spaces.length} spaces · refresh every ${this.config?.pollSeconds ?? "?"}s`,
+        `Running: ${this.runs.filter((r) => r.running).length} tasks, ${this.shells.length} terminals`,
+        "",
+        `Recent errors (${errors.length}):`,
+        ...(errors.length ? errors.map((n) => `- ${new Date(n.at).toISOString()} ${n.text}`) : ["- none"]),
+        "",
+        `Log (last ${tail.length} lines of ${facts.logDir || "the log"}):`,
+        "```",
+        ...tail,
+        "```",
+      ];
+      await copyText(lines.join("\n"));
+      this.notify("Copied diagnostics. Paste them into a bug report.", "ok");
+    } catch (e) {
+      this.notify(`Could not collect diagnostics: ${firstLine(String(e))}`, "err");
+    }
+  }
+
+  async openLogFolder() {
+    try {
+      await api.openLogDir();
+    } catch (e) {
+      this.notify(`Could not open the log folder: ${firstLine(String(e))}`, "err");
+    }
   }
 
   get unreadNotices() {
@@ -2556,7 +2607,7 @@ class Store {
   /** Opens Settings, on one section when given (appearance, spaces, folders, projects, updates, advanced). */
   openSettings(section?: string) {
     try {
-      if (section) localStorage.setItem("scout.settingsSection", section);
+      if (section) localStorage.setItem("tern.settingsSection", section);
     } catch {}
     this.overlay = "settings";
   }

@@ -139,10 +139,10 @@ impl Runner {
             return Err(format!("folder not found: {}", cwd.display()));
         }
         let mut cmd = if cfg!(windows) {
-            // cmd expands %SCOUT_TASK% and then runs it exactly as typed, quotes and all.
+            // cmd expands %TERN_TASK% and then runs it exactly as typed, quotes and all.
             let mut c = CommandBuilder::new("cmd.exe");
-            c.args(["/D", "/S", "/C", "%SCOUT_TASK%"]);
-            c.env("SCOUT_TASK", command);
+            c.args(["/D", "/S", "/C", "%TERN_TASK%"]);
+            c.env("TERN_TASK", command);
             c
         } else {
             let mut c = CommandBuilder::new("sh");
@@ -366,11 +366,11 @@ mod tests {
         let (info, orx, erx) = start(&runner, cmd);
         // Like a person typing: the terminal reads keys once the task has started.
         std::thread::sleep(Duration::from_millis(1000));
-        runner.input(info.id, "scout\r").unwrap();
+        runner.input(info.id, "tern\r").unwrap();
         let exited = erx.recv_timeout(Duration::from_secs(20));
         let text: String = orx.try_iter().collect();
         assert!(exited.is_ok(), "no exit: {text:?}");
-        assert!(text.contains("got scout"), "{text}");
+        assert!(text.contains("got tern"), "{text}");
     }
 }
 

@@ -57,7 +57,7 @@
   type Col = "name" | "branch" | "changes" | "behind" | "ahead" | "activity" | "commit" | "fetched";
   const load = (k: string, d: string) => {
     try {
-      return localStorage.getItem("scout." + k) || d;
+      return localStorage.getItem("tern." + k) || d;
     } catch {
       return d;
     }
@@ -72,8 +72,8 @@
       desc = c !== "name" && c !== "branch";
     }
     try {
-      localStorage.setItem("scout.homeSort", sortBy);
-      localStorage.setItem("scout.homeDesc", desc ? "1" : "0");
+      localStorage.setItem("tern.homeSort", sortBy);
+      localStorage.setItem("tern.homeDesc", desc ? "1" : "0");
     } catch {}
   }
   const keyOf = (r: RepoEntry, c: Col): string | number => {

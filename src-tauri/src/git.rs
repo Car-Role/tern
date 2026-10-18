@@ -893,11 +893,11 @@ u UU N... 100644 100644 100644 100644 a b c conflict.txt\0\
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// Prints a branch review of real repos: `SCOUT_REPOS="C:\a;C:\b" cargo test print_review -- --ignored --nocapture`
+    /// Prints a branch review of real repos: `TERN_REPOS="C:\a;C:\b" cargo test print_review -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn print_review() {
-        for repo in std::env::var("SCOUT_REPOS").unwrap_or_default().split(';').filter(|r| !r.is_empty()) {
+        for repo in std::env::var("TERN_REPOS").unwrap_or_default().split(';').filter(|r| !r.is_empty()) {
             match branch_review(repo, None) {
                 Ok(r) => {
                     println!("== {repo}

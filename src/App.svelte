@@ -30,7 +30,7 @@
 
   const load = (k: string, d: number) => {
     try {
-      return Number(localStorage.getItem("scout." + k)) || d;
+      return Number(localStorage.getItem("tern." + k)) || d;
     } catch {
       return d;
     }
@@ -51,8 +51,8 @@
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         try {
-          localStorage.setItem("scout.railW", String(railW));
-          localStorage.setItem("scout.listW", String(listW));
+          localStorage.setItem("tern.railW", String(railW));
+          localStorage.setItem("tern.listW", String(listW));
         } catch {}
       };
       window.addEventListener("pointermove", move);
@@ -65,8 +65,8 @@
     if (which === "rail") railW = 250;
     else listW = 360;
     try {
-      localStorage.setItem("scout.railW", String(railW));
-      localStorage.setItem("scout.listW", String(listW));
+      localStorage.setItem("tern.railW", String(railW));
+      localStorage.setItem("tern.listW", String(listW));
     } catch {}
   }
 

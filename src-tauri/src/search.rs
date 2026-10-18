@@ -129,12 +129,12 @@ mod tests {
     use super::*;
     use std::fs;
 
-    /// Times a search in real repos: `SCOUT_REPOS="C:\\a;C:\\b" cargo test print_search -- --ignored --nocapture`
+    /// Times a search in real repos: `TERN_REPOS="C:\\a;C:\\b" cargo test print_search -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn print_search() {
-        let q = std::env::var("SCOUT_QUERY").unwrap_or_else(|_| "TODO".into());
-        for repo in std::env::var("SCOUT_REPOS").unwrap_or_default().split(';').filter(|r| !r.is_empty()) {
+        let q = std::env::var("TERN_QUERY").unwrap_or_else(|_| "TODO".into());
+        for repo in std::env::var("TERN_REPOS").unwrap_or_default().split(';').filter(|r| !r.is_empty()) {
             let t = std::time::Instant::now();
             let r = text(repo, &q, false, false, 60);
             let ms = t.elapsed().as_millis();

@@ -50,7 +50,7 @@
 
   function openSpaceSettings() {
     try {
-      localStorage.setItem("scout.settingsSection", "spaces");
+      localStorage.setItem("tern.settingsSection", "spaces");
     } catch {
       /* Settings opens on its first section instead. */
     }
