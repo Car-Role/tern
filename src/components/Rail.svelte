@@ -62,9 +62,111 @@
     ]);
   }
 
-  /** Arrow keys move between project rows; Enter opens one (the button handles Enter itself). */
+  // Drag and drop: drag a project to change its place, or onto another space (or its name) to move it there.
+  // Pointer events, not HTML drag and drop: the Windows window takes those for file drops.
+  type Drop = { before: string | null; gid: string; below: string | null; into: boolean };
+  let drag = $state<{ paths: string[]; label: string; x: number; y: number } | null>(null);
+  let drop = $state<Drop | null>(null);
+  let press: { path: string; x: number; y: number } | null = null;
+
+  function onRowDown(e: PointerEvent, r: RepoEntry, gid: string | undefined) {
+    if (e.button !== 0 || r.parent || gid === undefined) return;
+    press = { path: r.path, x: e.clientX, y: e.clientY };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+    window.addEventListener("keydown", onDragKey, true);
+  }
+
+  function mainsOf(gid: string) {
+    const g = app.groups.find((x) => (x.space?.id ?? "none") === gid);
+    return g ? g.repos.filter((r) => !r.parent).map((r) => r.path) : [];
+  }
+
+  function onMove(e: PointerEvent) {
+    if (!press) return;
+    if (!drag) {
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 6) return;
+      const sel = app.repoSel.includes(press.path) ? app.repoSel.filter((p) => app.repos.some((r) => r.path === p && !r.parent)) : [press.path];
+      const one = app.repos.find((r) => r.path === press!.path);
+      drag = { paths: sel, label: sel.length > 1 ? `${sel.length} projects` : (one?.name ?? ""), x: 0, y: 0 };
+      app.hideHover();
+    }
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    // Scroll the list when the pointer is near its top or bottom.
+    if (listEl) {
+      const b = listEl.getBoundingClientRect();
+      if (e.clientY < b.top + 24) listEl.scrollTop -= 12;
+      else if (e.clientY > b.bottom - 24) listEl.scrollTop += 12;
+    }
+    drop = target(e.clientX, e.clientY);
+  }
+
+  function target(x: number, y: number): Drop | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    const head = el?.closest<HTMLElement>("[data-group]");
+    if (head) {
+      const gid = head.dataset.group!;
+      const rows = listEl?.querySelectorAll<HTMLElement>(`.row[data-gid="${CSS.escape(gid)}"]`);
+      return { before: null, gid, below: rows?.length ? rows[rows.length - 1].dataset.path! : null, into: true };
+    }
+    const row = el?.closest<HTMLElement>(".row[data-gid]");
+    if (!row) return null;
+    const gid = row.dataset.gid!;
+    const main = row.dataset.main!;
+    const mains = mainsOf(gid);
+    const b = row.getBoundingClientRect();
+    // The lower half of a row (or any worktree row) means "after this project".
+    const after = main !== row.dataset.path || y > b.top + b.height / 2;
+    const before = after ? (mains[mains.indexOf(main) + 1] ?? null) : main;
+    if (before) return { before, gid, below: null, into: false };
+    const rows = listEl?.querySelectorAll<HTMLElement>(`.row[data-gid="${CSS.escape(gid)}"]`);
+    return { before: null, gid, below: rows?.length ? rows[rows.length - 1].dataset.path! : null, into: false };
+  }
+
+  function endDrag() {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("keydown", onDragKey, true);
+    press = null;
+    drag = null;
+    drop = null;
+  }
+
+  function onUp() {
+    const d = drag;
+    const t = drop;
+    endDrag();
+    if (!d) return;
+    // The click that ends a drag must not open the project.
+    const stop = (e: Event) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    window.addEventListener("click", stop, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener("click", stop, true), 0);
+    if (!t) return;
+    const space = app.activeSpace ? undefined : t.gid === "none" ? null : t.gid;
+    app.placeRepos(d.paths, t.before, space);
+  }
+
+  function onDragKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && drag) {
+      e.preventDefault();
+      e.stopPropagation();
+      endDrag();
+    }
+  }
+
+  /** Arrow keys move between project rows; Enter opens one (the button handles Enter itself). Alt Shift moves the project. */
   function onListKey(e: KeyboardEvent) {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const path = (document.activeElement as HTMLElement | null)?.dataset?.path;
+    if (e.altKey && e.shiftKey && path && !filter) {
+      e.preventDefault();
+      e.stopPropagation();
+      app.nudgeRepo(path, e.key === "ArrowDown" ? 1 : -1).then(() => tick()).then(() => listEl?.querySelector<HTMLButtonElement>(`button.row[data-path="${CSS.escape(path)}"]`)?.focus());
+      return;
+    }
     const rows = [...(listEl?.querySelectorAll<HTMLButtonElement>("button.row") ?? [])];
     const i = rows.indexOf(document.activeElement as HTMLButtonElement);
     if (i < 0) return;
@@ -90,7 +192,7 @@
   const spaceLabel = $derived(app.activeSpace?.name ?? "All spaces");
 </script>
 
-{#snippet repoRow(r: RepoEntry, flat: boolean)}
+{#snippet repoRow(r: RepoEntry, flat: boolean, gid?: string)}
   {@const s = app.sums[r.path]}
   {@const st = stateOf(s)}
   {@const working = app.isWorking(r.path)}
@@ -101,6 +203,13 @@
     class:child={!!r.parent && !flat}
     class:hidden={app.isHidden(r)}
     class:picked={app.repoSel.includes(r.path)}
+    class:dragged={!!drag && drag.paths.includes(r.path)}
+    class:drop-above={!!drop && !drop.into && drop.before === r.path && drop.gid === gid}
+    class:drop-below={!!drop && drop.below === r.path && drop.gid === gid}
+    data-path={r.path}
+    data-gid={gid}
+    data-main={r.parent ?? r.path}
+    onpointerdown={(e) => onRowDown(e, r, gid)}
     aria-pressed={app.repoSel.includes(r.path)}
     aria-current={app.current === r.path ? "page" : undefined}
     onclick={(e) => app.clickRepo(e, r.path)}
@@ -206,7 +315,7 @@
         {@const gid = g.space?.id ?? "none"}
         {@const gfolded = !app.activeSpace && folded.includes(gid)}
         {#if !app.activeSpace}
-          <button class="group" style:--c={g.space?.color ?? "var(--faint)"} onclick={() => toggleGroup(gid)} aria-expanded={!gfolded}>
+          <button class="group" class:drop-into={drop?.into && drop.gid === gid} data-group={gid} style:--c={g.space?.color ?? "var(--faint)"} onclick={() => toggleGroup(gid)} aria-expanded={!gfolded}>
             <span class="chev" class:closed={gfolded}><Icon name="chevronDown" size={10} stroke={1.8} /></span>
             <span class="sw"></span>{g.space?.name ?? "No space"}
             <span class="gcount">{g.repos.filter((r) => !r.parent).length}</span>
@@ -216,7 +325,7 @@
           {#each g.repos as r (r.path)}
             {@const hiddenTree = !!r.parent && !app.openTrees.includes(r.parent)}
             {@const trees = r.parent ? [] : g.repos.filter((x) => x.parent === r.path)}
-            {#if !hiddenTree || app.showsFolded(r)}{@render repoRow(r, false)}{/if}
+            {#if !hiddenTree || app.showsFolded(r)}{@render repoRow(r, false, gid)}{/if}
             {#if trees.length}
               {@const open = app.openTrees.includes(r.path)}
               {@const hiddenN = open ? 0 : trees.filter((t) => !app.showsFolded(t)).length}
@@ -231,6 +340,10 @@
       {/each}
     {/if}
   </div>
+
+  {#if drag}
+    <div class="drag-ghost" style:left="{drag.x + 12}px" style:top="{drag.y + 8}px" aria-hidden="true">{drag.label}</div>
+  {/if}
 
   {#if app.repoSel.length}
     <div class="bulk" role="toolbar" aria-label="Actions for the selected projects">
@@ -413,6 +526,45 @@
   }
   .row:hover {
     background: var(--hover);
+  }
+  /* Drag and drop: a line where the project lands, and the space name lights up when you drop on it. */
+  .row.dragged {
+    opacity: 0.45;
+  }
+  .row.drop-above::after,
+  .row.drop-below::after {
+    content: "";
+    position: absolute;
+    left: var(--s2);
+    right: var(--s2);
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+  .row.drop-above::after {
+    top: -1px;
+  }
+  .row.drop-below::after {
+    bottom: -1px;
+  }
+  .group.drop-into {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-radius: var(--radius);
+  }
+  .drag-ghost {
+    position: fixed;
+    z-index: 100;
+    padding: 2px var(--s3);
+    border-radius: var(--radius);
+    background: var(--raised);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-pop);
+    font-size: var(--fs-sm);
+    color: var(--text);
+    pointer-events: none;
+    white-space: nowrap;
   }
   .row.active {
     background: var(--raised);

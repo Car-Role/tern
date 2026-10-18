@@ -65,7 +65,9 @@ projects, tabs, files, reviews, and screens you visited.
 - **Space switcher** (top): pick a space, or All spaces (`Ctrl Shift S`, `Ctrl Alt 0`–`9`).
 - **Home, Tickets, Data, Search**: the places you can go. Tickets shows how many are assigned to you.
 - **Projects**: grouped by space in the All spaces view. Click a group name to fold it. **+** clones a project
-  or adds a folder to scan. **Filter projects** appears when you have more than six; Enter opens the first match.
+  or adds a folder to scan. **Drag** a project to change its place; drag it into another space, or onto a space's
+  name, to move it there. Dropped next to a pinned project, it is pinned too. Drag several selected projects at once.
+  `Alt Shift ↑` / `Alt Shift ↓` moves the focused project. `Esc` cancels a drag. **Filter projects** appears when you have more than six; Enter opens the first match.
 - Each row shows:
 
   | Mark | Meaning |
@@ -209,7 +211,7 @@ example `bug/4790-grid-loses-sort`), **Copy link**. Keys: `↑` `↓` or `J` `K`
   SQL Server rolls back every batch, and Redis allows only commands that read. To change data, turn on
   **Allow writes** in the connection, then the **Read-only** button in the bar. Tern still asks before a query
   that changes data.
-- Click a table for its first 100 rows, or a Redis key for its value. Postgres marks **foreign** tables: they read a
+- Click a table for its first 100 rows, or a Redis key for its value and when it expires (the second result). Postgres marks **foreign** tables: they read a
   file or another server each time, so they fail when that file is gone (for example an old server log). The editor completes table and column names.
   `Ctrl Enter` runs the query (or only the selected text). Several statements give several results. Results show
   the first 1,000 rows.
@@ -326,6 +328,7 @@ Keys are written with spaces: `Ctrl Shift P` means hold Ctrl and Shift, then pre
 | `Ctrl 1` – `Ctrl 7` | Project tabs |
 | `Alt ←` / `Alt →` | Back / forward |
 | `Alt ↑` / `Alt ↓` | Previous / next project |
+| `Alt Shift ↑` / `Alt Shift ↓` | Move the focused project up or down (sidebar) |
 | `F12` / `Shift F12` | Go to definition / find usages |
 | `Ctrl Shift O` | Clone a project |
 | `Ctrl \` | Show or hide the sidebar |

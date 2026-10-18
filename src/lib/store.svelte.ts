@@ -319,7 +319,7 @@ class Store {
     return this.repos.filter((r) => !r.parent && (!id || this.spaceOf(r) === id) && this.isHidden(r)).length;
   });
 
-  /** Main repos first (pinned, then by name). Each worktree follows its main repo. */
+  /** Main repos first (pinned, then your dragged order, then by name). Each worktree follows its main repo. */
   ordered = $derived.by(() => this.sortRepos(this.visible));
 
   /** The rail and overview show these groups. With one space on screen there is one group. */
@@ -338,7 +338,9 @@ class Store {
   private sortRepos(list: RepoEntry[]) {
     const byName = (a: RepoEntry, b: RepoEntry) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     const mains = list.filter((r) => !r.parent || !list.some((m) => m.path === r.parent));
-    mains.sort((a, b) => Number(b.pinned) - Number(a.pinned) || byName(a, b));
+    const at = new Map((this.config?.order ?? []).map((p, i) => [slash(p), i]));
+    const rank = (r: RepoEntry) => at.get(slash(r.path)) ?? Infinity;
+    mains.sort((a, b) => Number(b.pinned) - Number(a.pinned) || rank(a) - rank(b) || byName(a, b));
     const out: RepoEntry[] = [];
     for (const m of mains) {
       out.push(m);
@@ -2489,6 +2491,54 @@ class Store {
     this.config = next;
     this.startPolling();
     await this.reloadRepos();
+  }
+
+  /**
+   * Drag and drop in the sidebar. Puts `paths` (main repos) before `before`, or at the end of the group when it is
+   * null. Dropped before a project, they take its pin; at the end they keep theirs. `space` (when given) assigns them.
+   */
+  async placeRepos(paths: string[], before: string | null, space?: string | null) {
+    if (!this.config) return;
+    const moving = paths.filter((p) => this.repos.some((r) => r.path === p && !r.parent));
+    if (!moving.length || (before && moving.includes(before))) return;
+    const all = this.sortRepos(this.repos).filter((r) => !r.parent);
+    const target = before ? all.find((r) => r.path === before) : null;
+    const pin = target ? target.pinned : null;
+    const rest = all.filter((r) => !moving.includes(r.path)).map((r) => r.path);
+    let i = before ? rest.indexOf(before) : -1;
+    if (i < 0) {
+      // The end of the group: after the last project of that space (or of everything in one-space view).
+      const sp = space !== undefined ? space : this.activeSpace?.id;
+      const inGroup = rest.filter((p) => sp === undefined || this.spaceOf(this.repos.find((r) => r.path === p)!) === sp);
+      const last = inGroup[inGroup.length - 1];
+      i = last ? rest.indexOf(last) + 1 : rest.length;
+    }
+    rest.splice(i, 0, ...moving);
+    const pinned = pin === null ? this.config.pinned : pin ? [...new Set([...this.config.pinned, ...moving])] : this.config.pinned.filter((p) => !moving.includes(p));
+    const assign = { ...this.config.assign };
+    let moved = "";
+    if (space !== undefined) {
+      for (const p of moving) {
+        const r = this.repos.find((x) => x.path === p)!;
+        if (this.spaceOf(r) === space) continue;
+        if (space) assign[p] = space;
+        else delete assign[p];
+        moved = space ? (this.spaces.find((x) => x.id === space)?.name ?? "") : "the space its rules pick";
+      }
+    }
+    await this.saveConfig({ ...this.config, order: rest, pinned, assign });
+    const what = moving.length === 1 ? baseName(moving[0]) : `${moving.length} projects`;
+    if (moved) this.notify(`Moved ${what} to ${moved}`, "ok");
+  }
+
+  /** Alt Shift Up / Down in the sidebar: moves a project one place within its group. */
+  async nudgeRepo(path: string, dir: -1 | 1) {
+    const g = this.groups.find((x) => x.repos.some((r) => r.path === path));
+    if (!g) return;
+    const mains = g.repos.filter((r) => !r.parent).map((r) => r.path);
+    const i = mains.indexOf(path);
+    if (dir < 0 && i > 0) await this.placeRepos([path], mains[i - 1], g.space?.id ?? null);
+    else if (dir > 0 && i >= 0 && i < mains.length - 1) await this.placeRepos([path], mains[i + 2] ?? null, g.space?.id ?? null);
   }
 
   async togglePin(path: string) {

@@ -208,6 +208,7 @@ let config: Config = {
   extra: [],
   hidden: [],
   pinned: [repos[0].path],
+  order: [],
   scanDepth: 3,
   pollSeconds: 8,
   spaces: [
@@ -235,7 +236,7 @@ export async function mock(cmd: string, args: Record<string, any>): Promise<unkn
     case "get_config": return config;
     case "set_config": config = args.config; return null;
     case "config_path": return "C:\\Users\\you\\AppData\\Roaming\\com.carl.scout\\config.json";
-    case "list_repos": return repos;
+    case "list_repos": return repos.map((r) => ({ ...r, pinned: !r.parent && config.pinned.includes(r.path) }));
     case "summaries": return (args.paths as string[]).map((p) => summary(repos.find((r) => r.path === p)!, repos.findIndex((r) => r.path === p)));
     case "list_files": return files;
     case "file_bytes": return qaBytes(String(args.rel), args.rev ?? null);

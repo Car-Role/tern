@@ -256,6 +256,8 @@ export type Config = {
   extra: string[];
   hidden: string[];
   pinned: string[];
+  /** Main repos in the order you dragged them. Repos not in it follow, by name. */
+  order: string[];
   scanDepth: number;
   pollSeconds: number;
   spaces: Space[];

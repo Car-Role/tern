@@ -41,6 +41,8 @@ pub struct Config {
     pub hidden: Vec<String>,
     /// Repos shown at the top of the list.
     pub pinned: Vec<String>,
+    /// Main repos in the order you dragged them. Repos not in it follow, by name.
+    pub order: Vec<String>,
     /// How many folder levels below a root are scanned.
     pub scan_depth: u32,
     /// Seconds between status refreshes while the window has focus.
@@ -74,6 +76,7 @@ impl Default for Config {
             extra: Vec::new(),
             hidden: Vec::new(),
             pinned: Vec::new(),
+            order: Vec::new(),
             scan_depth: 3,
             poll_seconds: 8,
             spaces: vec![

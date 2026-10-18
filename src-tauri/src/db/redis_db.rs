@@ -114,12 +114,30 @@ pub fn to_json(v: &RV) -> Value {
     }
 }
 
+/// TTL or PTTL as words: -1 means no expiry, -2 means the key is gone.
+pub fn expiry(n: i64, ms: bool) -> String {
+    match n {
+        -1 => "never: this key has no expiry".into(),
+        -2 => "gone: the key expired or was deleted".into(),
+        n => {
+            let secs = if ms { n / 1000 } else { n };
+            let (d, h, m, s) = (secs / 86400, secs % 86400 / 3600, secs % 3600 / 60, secs % 60);
+            let words = if d > 0 { format!("{d} d {h} h") } else if h > 0 { format!("{h} h {m} min") } else if m > 0 { format!("{m} min {s} s") } else { format!("{s} s") };
+            format!("in {words} ({n} {})", if ms { "ms" } else { "s" })
+        }
+    }
+}
+
 /// A reply as a table: pairs for HGETALL, WITHSCORES, and maps; one row per item for lists; one cell otherwise.
 pub fn to_set(args: &[String], v: &RV) -> ResultSet {
     let cmd = args.first().map(|s| s.to_uppercase()).unwrap_or_default();
     let pairs = matches!(cmd.as_str(), "HGETALL" | "CONFIG") || args.iter().any(|a| a.eq_ignore_ascii_case("WITHSCORES"));
     let mut set = ResultSet::default();
     match v {
+        RV::Int(n) if cmd == "TTL" || cmd == "PTTL" => {
+            set.columns = vec!["expires".into()];
+            set.push(vec![json!(expiry(*n, cmd == "PTTL"))]);
+        }
         RV::Map(m) => {
             set.columns = vec!["field".into(), "value".into()];
             for (k, v) in m {
@@ -181,6 +199,15 @@ pub async fn query(c: &mut MultiplexedConnection, text: &str, write: bool) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expiry_words() {
+        assert_eq!(expiry(-1, false), "never: this key has no expiry");
+        assert!(expiry(-2, false).starts_with("gone"));
+        assert_eq!(expiry(252, false), "in 4 min 12 s (252 s)");
+        assert_eq!(expiry(90061, false), "in 1 d 1 h (90061 s)");
+        assert_eq!(expiry(1500, true), "in 1 s (1500 ms)");
+    }
 
     fn a(s: &str) -> Vec<String> {
         split_args(s).unwrap()

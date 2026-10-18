@@ -26,15 +26,19 @@ export function redisArg(s: string): string {
 export function openQuery(engine: DbEngine, t: DbTable): string {
   if (engine === "redis") {
     const k = redisArg(t.name);
-    switch (t.kind) {
-      case "hash": return `HGETALL ${k}`;
-      case "list": return `LRANGE ${k} 0 999`;
-      case "set": return `SMEMBERS ${k}`;
-      case "zset": return `ZRANGE ${k} 0 999 WITHSCORES`;
-      case "stream": return `XRANGE ${k} - + COUNT 1000`;
-      case "ReJSON-RL": return `JSON.GET ${k}`;
-      default: return `GET ${k}\nTTL ${k}`;
-    }
+    // Then TTL: most Redis data is short-lived, so show how long the key has left.
+    const show = (() => {
+      switch (t.kind) {
+        case "hash": return `HGETALL ${k}`;
+        case "list": return `LRANGE ${k} 0 999`;
+        case "set": return `SMEMBERS ${k}`;
+        case "zset": return `ZRANGE ${k} 0 999 WITHSCORES`;
+        case "stream": return `XRANGE ${k} - + COUNT 1000`;
+        case "ReJSON-RL": return `JSON.GET ${k}`;
+        default: return `GET ${k}`;
+      }
+    })();
+    return `${show}\nTTL ${k}`;
   }
   const name = tableName(engine, t);
   return engine === "mssql" ? `SELECT TOP 100 * FROM ${name};` : `SELECT * FROM ${name} LIMIT 100;`;

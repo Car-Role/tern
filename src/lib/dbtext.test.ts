@@ -24,8 +24,8 @@ describe("database text", () => {
   it("writes starter queries", () => {
     expect(openQuery("mssql", t("dbo", "Orders"))).toBe("SELECT TOP 100 * FROM Orders;");
     expect(openQuery("postgres", t("public", "users"))).toBe("SELECT * FROM users LIMIT 100;");
-    expect(openQuery("redis", t("user", "user:1", "hash"))).toBe("HGETALL user:1");
-    expect(openQuery("redis", t("", "my key", "zset"))).toBe('ZRANGE "my key" 0 999 WITHSCORES');
+    expect(openQuery("redis", t("user", "user:1", "hash"))).toBe("HGETALL user:1\nTTL user:1");
+    expect(openQuery("redis", t("", "my key", "zset"))).toBe('ZRANGE "my key" 0 999 WITHSCORES\nTTL "my key"');
     expect(redisArg('say "hi"')).toBe('"say \\"hi\\""');
   });
 

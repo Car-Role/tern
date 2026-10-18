@@ -41,7 +41,7 @@ function query(c: DbConn, sql: string, write: boolean): DbQueryResult {
       if (u === "HGETALL") return { columns: ["field", "value"], rows: [["name", "Ada"], ["email", "ada@example.com"], ["plan", "pro"]], more: 0, affected: null };
       if (u === "ZRANGE") return { columns: ["member", "score"], rows: names.map((n, i) => [n, String(100 - i * 7)]), more: 0, affected: null };
       if (u === "LRANGE" || u === "SMEMBERS" || u === "XRANGE") return { columns: ["#", "value"], rows: names.map((n, i) => [i + 1, n]), more: 0, affected: null };
-      if (u === "TTL") return { columns: ["value"], rows: [[3600]], more: 0, affected: null };
+      if (u === "TTL") return { columns: ["expires"], rows: [["in 1 h 0 min (3600 s)"]], more: 0, affected: null };
       return { columns: ["value"], rows: [[key ? `{"user":1,"key":"${key}"}` : "PONG"]], more: 0, affected: null };
     });
     return { sets, ms: 2, note: null };

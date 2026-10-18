@@ -20,7 +20,7 @@
 
   let draft = $state<Config>(
     structuredClone($state.snapshot(app.config)) ?? {
-      roots: [], extra: [], hidden: [], pinned: [], scanDepth: 3, pollSeconds: 8,
+      roots: [], extra: [], hidden: [], pinned: [], order: [], scanDepth: 3, pollSeconds: 8,
       spaces: [], assign: {}, defaultSpace: null, activeSpace: null, tasks: {}, pinnedTasks: {},
     },
   );
